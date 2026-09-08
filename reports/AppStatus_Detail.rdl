@@ -89,7 +89,7 @@
     arp.Version0                                              AS ARP_Version,
     ws.LastHWScan                                             AS LetzteInventory,
     DATEDIFF(day, ws.LastHWScan, GETDATE())                   AS InventoryAlterTage
-FROM fn_rbac_AppDeploymentAssetDetails(@UserSIDs) ads
+FROM fn_rbac_AppDeploymentAssetDetails(1033, @UserSIDs) ads
 INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
@@ -213,7 +213,7 @@ FROM (
         WHEN ads.EnforcementState &gt;= 3000 AND ads.EnforcementState &lt; 4000                        THEN NULL
         ELSE 0
     END AS IsInstalled
-    FROM fn_rbac_AppDeploymentAssetDetails(@UserSIDs) ads
+    FROM fn_rbac_AppDeploymentAssetDetails(1033, @UserSIDs) ads
 INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0

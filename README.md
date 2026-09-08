@@ -122,7 +122,7 @@ first render from the console failed on the reporting point's missing SELECT rig
 
 ## Notes and limitations
 
-- The deployment status comes from `fn_rbac_AppDeploymentAssetDetails(@UserSIDs)`, the same
+- The deployment status comes from `fn_rbac_AppDeploymentAssetDetails(1033, @UserSIDs)`, the same
   RBAC function the built-in deployment reports use, with `UserSIDs` resolved from the
   caller's token through `DataSetAdminID` exactly like those reports. The plain view behind
   it, `vAppDeploymentAssetDetails`, is not readable by the reporting point's account (the
