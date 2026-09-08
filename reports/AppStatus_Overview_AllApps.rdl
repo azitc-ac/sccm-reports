@@ -119,7 +119,12 @@ ORDER BY Publisher0, DisplayName0, Version0, ComputerName
     </ReportParameter>
     <ReportParameter Name="UserSIDs">
       <DataType>String</DataType>
-      <DefaultValue><Values><Value>0</Value></Values></DefaultValue>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>DataSetAdminID</DataSetName>
+          <ValueField>UserSIDs</ValueField>
+        </DataSetReference>
+      </DefaultValue>
       <Hidden>true</Hidden>
     </ReportParameter>
     <ReportParameter Name="CollID">
