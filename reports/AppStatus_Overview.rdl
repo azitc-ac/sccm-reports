@@ -293,7 +293,7 @@ ORDER BY Sortier, Rolle
             <TablixBody>
               <TablixColumns>
                 <TablixColumn>
-                  <Width>7cm</Width>
+                  <Width>5.5cm</Width>
                 </TablixColumn>
                 <TablixColumn>
                   <Width>2.5cm</Width>
