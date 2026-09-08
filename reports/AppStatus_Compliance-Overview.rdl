@@ -36,6 +36,11 @@
     <DataSet Name="DashboardData">
       <Query>
         <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@UserSIDs">
+            <Value>=Parameters!UserSIDs.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
         <CommandText>WITH AppStatusPerDevice AS (
     SELECT
         ads.MachineID,
@@ -52,7 +57,7 @@
         WHEN ads.EnforcementState &gt;= 3000 AND ads.EnforcementState &lt; 4000                        THEN NULL
         ELSE 0
     END AS IsInstalled
-    FROM vAppDeploymentAssetDetails ads
+    FROM fn_rbac_AppDeploymentAssetDetails(@UserSIDs) ads
 INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
