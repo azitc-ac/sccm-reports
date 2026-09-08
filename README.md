@@ -109,9 +109,14 @@ Exit code 1 when any dataset fails.
 
 2026-09-08: the queries were reworked - left-aligned version comparison, `MachineID` instead of
 the computer name, one ARP lookup shared by all reports, enforcement state families - and
-the two scripts were added. Every query parses as T-SQL and every RDL is well-formed, but
-**none of this has been run against a site yet**. `Test-ReportQueries.ps1` is the first thing
-to run; `Publish-Reports.ps1` has not been exercised against a reporting point either.
+the two scripts were added.
+
+`Test-ReportQueries.ps1` was run against the AZI lab site (CM1, `CM_AZI`): all 18 datasets
+of the seven reports return without errors, every column the reports expect is there, and
+no query takes longer than 0.6 seconds. The outdated-apps report returned no rows on that
+site, which is consistent with the overview (every client compliant) but not a proof of the
+comparison on real data yet. `Publish-Reports.ps1` has not been exercised against a
+reporting point so far; the rendered reports have not been looked at since the rework.
 
 ## Notes and limitations
 
