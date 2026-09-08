@@ -126,7 +126,24 @@ foreach ($file in (Get-ChildItem -LiteralPath $Path -Filter '*.rdl' | Sort-Objec
             }
             finally { $reader.Close() }
         }
-        catch { $error = $_.Exception.Message }
+        catch {
+            $error = $_.Exception.Message
+            # A function called with the wrong number of arguments: say what
+            # it actually takes, so the fix is a lookup and not a guess.
+            if ($error -match 'arguments were supplied for the procedure or function (\w+)') {
+                $function = $Matches[1]
+                try {
+                    $signature = New-Object System.Collections.ArrayList
+                    $lookup = $connection.CreateCommand()
+                    $lookup.CommandText = "SELECT p.name, t.name AS type FROM sys.parameters p JOIN sys.types t ON t.user_type_id = p.user_type_id WHERE p.object_id = OBJECT_ID('dbo.$function') ORDER BY p.parameter_id"
+                    $signatureReader = $lookup.ExecuteReader()
+                    try { while ($signatureReader.Read()) { $null = $signature.Add(('{0} {1}' -f $signatureReader.GetString(0), $signatureReader.GetString(1))) } }
+                    finally { $signatureReader.Close() }
+                    $error += (' - {0} takes: {1}' -f $function, ($signature -join ', '))
+                }
+                catch { }
+            }
+        }
         $watch.Stop()
 
         $missing = @($expectedFields | Where-Object { $_ -and $_ -notin $columns })

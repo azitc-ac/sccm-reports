@@ -49,7 +49,7 @@
     app.SoftwareVersion                                       AS SollVersion,
     arp.Version0                                              AS IstVersion,
     ads.MachineName                                           AS ComputerName
-FROM fn_rbac_AppDeploymentAssetDetails(@UserSIDs) ads
+FROM fn_rbac_AppDeploymentAssetDetails(1033, @UserSIDs) ads
 INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
