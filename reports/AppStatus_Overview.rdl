@@ -299,13 +299,13 @@ ORDER BY Sortier, Rolle
                   <Width>2.5cm</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>5cm</Width>
+                  <Width>4.5cm</Width>
                 </TablixColumn>
                 <TablixColumn>
                   <Width>2.5cm</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>2cm</Width>
+                  <Width>4cm</Width>
                 </TablixColumn>
               </TablixColumns>
               <TablixRows>
