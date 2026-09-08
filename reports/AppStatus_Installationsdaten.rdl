@@ -106,7 +106,12 @@ ORDER BY AppName, SollVersion, InstallDatum, ComputerName</CommandText>
     </ReportParameter>
     <ReportParameter Name="UserSIDs">
       <DataType>String</DataType>
-      <DefaultValue><Values><Value>0</Value></Values></DefaultValue>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>DataSetAdminID</DataSetName>
+          <ValueField>UserSIDs</ValueField>
+        </DataSetReference>
+      </DefaultValue>
       <Hidden>true</Hidden>
     </ReportParameter>
   </ReportParameters>
