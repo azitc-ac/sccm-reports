@@ -115,12 +115,24 @@ the two scripts were added.
 of the seven reports return without errors, every column the reports expect is there, and
 no query takes longer than 0.6 seconds. The outdated-apps report returned no rows on that
 site, which is consistent with the overview (every client compliant) but not a proof of the
-comparison on real data yet. `Publish-Reports.ps1` has not been exercised against a
-reporting point so far; the rendered reports have not been looked at since the rework.
+comparison on real data yet. `Publish-Reports.ps1` uploaded all seven reports to the same site's reporting point. The
+first render from the console failed on the reporting point's missing SELECT right on
+`vAppDeploymentAssetDetails`, which is why the reports now go through
+`fn_rbac_AppDeploymentAssetDetails`; the rendered reports have not been checked since.
 
 ## Notes and limitations
 
-- The reports use plain ConfigMgr views (`v_Collection`, `v_GS_ADD_REMOVE_PROGRAMS`, …) rather than the `fn_rbac_*` functions, so SSRS role-based access filtering does not apply. Restrict access via SSRS folder permissions if needed.
+- The deployment status comes from `fn_rbac_AppDeploymentAssetDetails(@UserSIDs)`, the same
+  RBAC function the built-in deployment reports use, with `UserSIDs` resolved from the
+  caller's token through `DataSetAdminID` exactly like those reports. The plain view behind
+  it, `vAppDeploymentAssetDetails`, is not readable by the reporting point's account (the
+  `smsschm_users` role), so a report on the shared data source fails with "SELECT permission
+  was denied" on it. The other views (`v_Collection`, `v_GS_ADD_REMOVE_PROGRAMS`, …) are
+  granted to that role and are used directly, so role-based filtering applies to the
+  deployments but not to the inventory rows. Restrict access via SSRS folder permissions if
+  needed.
+- Opened from the ConfigMgr console the token SIDs are passed in; opened from the SSRS web
+  portal the reports behave like the built-in ones do there.
 - Version comparison handles up to four numeric segments (`major.minor.build.revision`); a fifth and beyond are ignored, non-numeric segments compare as `0`.
 - An application name containing `%`, `_` or `[` is matched as a `LIKE` pattern and may match more than intended.
 - The embedded WinForms report viewer in the ConfigMgr console does not support cross-report bookmark navigation and cannot set hidden parameters via drillthrough — this is why the role navigation uses a visible filter parameter with a default value.

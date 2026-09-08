@@ -72,12 +72,21 @@ if (-not $CollectionID) {
 }
 Write-Host ("Sample values: ComputerName = [{0}], RoleFilter = [{1}], CollectionID = [{2}]" -f $ComputerName, $RoleFilter, $CollectionID) -ForegroundColor Gray
 
+# The RBAC functions want the admin ids behind the caller's token, which the
+# console passes as UserTokenSIDs - here they are derived from the current
+# Windows identity, the user's SID and the SIDs of its groups.
+$identity  = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$tokenSids = (@($identity.User.Value) + @($identity.Groups | ForEach-Object { $_.Value })) -join ','
+$userSids  = [string](Invoke-Scalar ("SELECT dbo.fn_rbac_GetAdminIDsfromUserSIDs('{0}')" -f $tokenSids.Replace("'", "''")))
+Write-Host ("RBAC admin ids for {0}: [{1}]" -f $identity.Name, $userSids) -ForegroundColor Gray
+if (-not $userSids) { Write-Warning "No ConfigMgr administrative user matches $($identity.Name) - the RBAC functions will return nothing." }
+
 $sampleValues = @{
     '@ComputerName'  = $ComputerName
     '@RolleFilter'   = $RoleFilter
     '@CollID'        = $CollectionID
-    '@UserTokenSIDs' = '0'
-    '@UserSIDs'      = '0'
+    '@UserTokenSIDs' = $tokenSids
+    '@UserSIDs'      = $userSids
 }
 
 $namespace = @{ r = 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition' }

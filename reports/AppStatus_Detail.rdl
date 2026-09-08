@@ -46,6 +46,9 @@
       <Query>
         <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
         <QueryParameters>
+          <QueryParameter Name="@UserSIDs">
+            <Value>=Parameters!UserSIDs.Value</Value>
+          </QueryParameter>
           <QueryParameter Name="@ComputerName">
             <Value>=Parameters!ComputerName.Value</Value>
           </QueryParameter>
@@ -86,7 +89,7 @@
     arp.Version0                                              AS ARP_Version,
     ws.LastHWScan                                             AS LetzteInventory,
     DATEDIFF(day, ws.LastHWScan, GETDATE())                   AS InventoryAlterTage
-FROM vAppDeploymentAssetDetails ads
+FROM fn_rbac_AppDeploymentAssetDetails(@UserSIDs) ads
 INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
@@ -186,6 +189,9 @@ ORDER BY AppName</CommandText>
       <Query>
         <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
         <QueryParameters>
+          <QueryParameter Name="@UserSIDs">
+            <Value>=Parameters!UserSIDs.Value</Value>
+          </QueryParameter>
           <QueryParameter Name="@ComputerName">
             <Value>=Parameters!ComputerName.Value</Value>
           </QueryParameter>
@@ -207,7 +213,7 @@ FROM (
         WHEN ads.EnforcementState &gt;= 3000 AND ads.EnforcementState &lt; 4000                        THEN NULL
         ELSE 0
     END AS IsInstalled
-    FROM vAppDeploymentAssetDetails ads
+    FROM fn_rbac_AppDeploymentAssetDetails(@UserSIDs) ads
 INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
@@ -1266,9 +1272,10 @@ CROSS APPLY (
     <ReportParameter Name="UserSIDs">
       <DataType>String</DataType>
       <DefaultValue>
-        <Values>
-          <Value>0</Value>
-        </Values>
+        <DataSetReference>
+          <DataSetName>DataSetAdminID</DataSetName>
+          <ValueField>UserSIDs</ValueField>
+        </DataSetReference>
       </DefaultValue>
       <Hidden>true</Hidden>
     </ReportParameter>
