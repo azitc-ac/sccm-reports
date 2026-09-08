@@ -389,7 +389,7 @@ CROSS APPLY (
                 <Top>1.4cm</Top>
                 <Left>14.3cm</Left>
                 <Height>0.3cm</Height>
-                <Width>3.2cm</Width>
+                <Width>2.6cm</Width>
                 <ZIndex>3</ZIndex>
                 <Style>
                   <Border>
@@ -427,7 +427,7 @@ CROSS APPLY (
                 <Top>1.1cm</Top>
                 <Left>17cm</Left>
                 <Height>0.5cm</Height>
-                <Width>3cm</Width>
+                <Width>2.9cm</Width>
                 <ZIndex>5</ZIndex>
 
                 <Style>

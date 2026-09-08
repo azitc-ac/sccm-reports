@@ -99,8 +99,12 @@ foreach ($file in (Get-ChildItem -LiteralPath $Path -Filter '*.rdl' | Sort-Objec
     $warnings = $null
     $item = $proxy.CreateCatalogItem('Report', $name, $folderPath, $true, $bytes, $null, [ref]$warnings)
     Write-Host ("Uploaded: {0}" -f $name) -ForegroundColor Green
+    # The data source warning is expected - it is rewired right below - and
+    # an entry without a code is the empty placeholder the service returns.
     foreach ($warning in @($warnings)) {
-        if ($warning.Code -ne 'rsDataSourceReferenceNotPublished') { Write-Host ("    {0}: {1}" -f $warning.Code, $warning.Message) -ForegroundColor Yellow }
+        if (-not $warning -or [string]::IsNullOrWhiteSpace($warning.Code)) { continue }
+        if ($warning.Code -eq 'rsDataSourceReferenceNotPublished') { continue }
+        Write-Host ("    {0}: {1}" -f $warning.Code, $warning.Message) -ForegroundColor Yellow
     }
 
     if ($sharedDataSource) {
