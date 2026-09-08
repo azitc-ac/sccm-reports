@@ -1,0 +1,389 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition"
+        xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
+  <rd:ReportUnitType>Cm</rd:ReportUnitType>
+  <rd:ReportServerUrl>http://CMSERVER/ReportServer</rd:ReportServerUrl>
+  <AutoRefresh>0</AutoRefresh>
+
+  <DataSources>
+    <DataSource Name="AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_">
+      <rd:SecurityType>Integrated</rd:SecurityType>
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString>Data Source=CMSERVER;Initial Catalog=CM_P01</ConnectString>
+        <IntegratedSecurity>true</IntegratedSecurity>
+      </ConnectionProperties>
+      <rd:DataSourceID>11111111-1111-1111-1111-111111111111</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+
+  <DataSets>
+    <DataSet Name="DataSetAdminID">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@UserTokenSIDs">
+            <Value>=Parameters!UserTokenSIDs.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>select dbo.fn_rbac_GetAdminIDsfromUserSIDs(@UserTokenSIDs) as UserSIDs</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="UserSIDs"><rd:TypeName>System.String</rd:TypeName><DataField>UserSIDs</DataField></Field>
+      </Fields>
+    </DataSet>
+
+    <DataSet Name="DashboardData">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <CommandText>WITH AppStatusPerDevice AS (
+    SELECT
+        ads.MachineID,
+        CASE
+        -- ARP entry with a version: the comparison decides, nothing else
+        WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL AND c.Cmp &gt;= 0 THEN 1
+        WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL                THEN 0
+        -- ARP entry without a version, or no ARP entry at all: only the
+        -- client's own installed + compliant counts (products that do not
+        -- register in ARP, e.g. Oracle). EnforcementState 1001 alone is not
+        -- proof of an installation.
+        WHEN ads.InstalledState = 2 AND ads.ComplianceState = 1                                  THEN 1
+        -- Requirements not met: not applicable, neither installed nor missing
+        WHEN ads.EnforcementState &gt;= 3000 AND ads.EnforcementState &lt; 4000                        THEN NULL
+        ELSE 0
+    END AS IsInstalled
+    FROM vAppDeploymentAssetDetails ads
+INNER JOIN v_ApplicationAssignment aa
+    ON  aa.AssignmentID   = ads.AssignmentID
+    AND aa.OfferTypeID    = 0
+    AND aa.CollectionName LIKE 'ins-req-dev-%'
+INNER JOIN v_Applications app ON app.ModelId = aa.AppModelID
+    OUTER APPLY (
+    -- The ARP entry of the deployed product: the shortest display name that
+    -- starts with the application name, highest version first.
+    SELECT TOP 1 DisplayName0, Version0
+    FROM (
+        SELECT DisplayName0, InstallDate0, Version0, ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS
+        UNION ALL
+        SELECT DisplayName0, InstallDate0, Version0, ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS_64
+    ) arp_all
+    WHERE arp_all.ResourceID = ads.MachineID
+      AND arp_all.DisplayName0 LIKE CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0
+                THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1)
+                ELSE app.DisplayName END + '%'
+    ORDER BY LEN(arp_all.DisplayName0) ASC, arp_all.Version0 DESC
+) arp
+    CROSS APPLY (
+    -- Both versions cut or padded to four numeric segments, left aligned.
+    -- PARSENAME counts from the right, so without this '26.02' against
+    -- '25.01.00.0' compares 26 with 25's revision and the older build wins.
+    SELECT
+        Ist  = CASE WHEN LEN(x.i) - LEN(REPLACE(x.i, '.', '')) &gt;= 4
+             THEN LEFT(x.i, CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.') + 1) + 1) + 1) - 1)
+             ELSE x.i + REPLICATE('.0', 3 - (LEN(x.i) - LEN(REPLACE(x.i, '.', ''))))
+        END,
+        Soll = CASE WHEN LEN(x.s) - LEN(REPLACE(x.s, '.', '')) &gt;= 4
+             THEN LEFT(x.s, CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.') + 1) + 1) + 1) - 1)
+             ELSE x.s + REPLICATE('.0', 3 - (LEN(x.s) - LEN(REPLACE(x.s, '.', ''))))
+        END
+    FROM (SELECT i = LTRIM(RTRIM(ISNULL(arp.Version0, ''))), s = LTRIM(RTRIM(ISNULL(app.SoftwareVersion, '')))) x
+) v
+CROSS APPLY (
+    -- 1 = installed is newer, 0 = same, -1 = installed is older
+    SELECT Cmp = CASE
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 4) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 4) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 3) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 3) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 2) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 2) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 1) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 1) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) THEN -1
+        ELSE 0 END
+) c
+),
+DeviceSummary AS (
+    SELECT
+        REPLACE(role_col.Name, 'rol-dev-', '') AS ServerRolle,
+        cte.MachineID,
+        COUNT(cte.IsInstalled)                  AS Apps_Gesamt,
+        ISNULL(SUM(cte.IsInstalled), 0)         AS Apps_Installiert
+    FROM AppStatusPerDevice cte
+    INNER JOIN v_FullCollectionMembership role_mem ON role_mem.ResourceID = cte.MachineID
+    INNER JOIN v_Collection role_col
+        ON  role_mem.CollectionID = role_col.CollectionID
+        AND role_col.Name LIKE 'rol-dev-%'
+    GROUP BY role_col.Name, cte.MachineID
+    HAVING COUNT(cte.IsInstalled) &gt; 0
+)
+SELECT
+    ServerRolle,
+    COUNT(*)                                                          AS TotalClients,
+    SUM(CASE WHEN Apps_Installiert = Apps_Gesamt THEN 1 ELSE 0 END)  AS CompliantClients,
+    SUM(CASE WHEN Apps_Installiert &lt; Apps_Gesamt THEN 1 ELSE 0 END)  AS NonCompliantClients
+FROM DeviceSummary
+GROUP BY ServerRolle
+ORDER BY ServerRolle</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="ServerRolle"><rd:TypeName>System.String</rd:TypeName><DataField>ServerRolle</DataField></Field>
+        <Field Name="TotalClients"><rd:TypeName>System.Int32</rd:TypeName><DataField>TotalClients</DataField></Field>
+        <Field Name="CompliantClients"><rd:TypeName>System.Int32</rd:TypeName><DataField>CompliantClients</DataField></Field>
+        <Field Name="NonCompliantClients"><rd:TypeName>System.Int32</rd:TypeName><DataField>NonCompliantClients</DataField></Field>
+      </Fields>
+    </DataSet>
+  </DataSets>
+
+  <ReportParameters>
+    <ReportParameter Name="UserTokenSIDs">
+      <DataType>String</DataType>
+      <DefaultValue><Values><Value>0</Value></Values></DefaultValue>
+      <Prompt>UserTokenSIDs</Prompt>
+      <Hidden>true</Hidden>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="UserSIDs">
+      <DataType>String</DataType>
+      <DefaultValue><Values><Value>0</Value></Values></DefaultValue>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+  </ReportParameters>
+
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <Height>120mm</Height>
+        <Style><BackgroundColor>White</BackgroundColor></Style>
+        <ReportItems>
+
+          <Rectangle Name="rcHeader">
+            <Top>0cm</Top><Left>0cm</Left><Width>19cm</Width><Height>1.8cm</Height>
+            <Style><BackgroundColor>#0078d4</BackgroundColor><Border><Style>None</Style></Border></Style>
+            <ReportItems>
+              <Textbox Name="txtTitle">
+                <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                <Top>0.2cm</Top><Left>0.4cm</Left><Width>14cm</Width><Height>0.8cm</Height>
+                <Paragraphs><Paragraph><TextRuns><TextRun>
+                  <Value>Anwendungs-Installationsstatus – Compliance-Übersicht</Value>
+                  <Style><FontFamily>Segoe UI</FontFamily><FontSize>14pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                <Style><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border></Style>
+              </Textbox>
+              <Textbox Name="txtSubtitle">
+                <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                <Top>1.0cm</Top><Left>0.4cm</Left><Width>14cm</Width><Height>0.6cm</Height>
+                <Paragraphs><Paragraph><TextRuns><TextRun>
+                  <Value>Compliance pro Serverrolle – Klick auf Rolle öffnet Detailansicht</Value>
+                  <Style><FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><Color>#B8D4FF</Color></Style>
+                </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                <Style><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border></Style>
+              </Textbox>
+              <Textbox Name="txtReportDate">
+                <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                <Top>0.5cm</Top><Left>17cm</Left><Width>1.8cm</Width><Height>0.5cm</Height>
+                <Paragraphs><Paragraph>
+                  <TextRuns><TextRun>
+                    <Value>=Format(Now(), "dd.MM.yyyy")</Value>
+                    <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize><Color>#B8D4FF</Color></Style>
+                  </TextRun></TextRuns>
+                  <Style><TextAlign>Right</TextAlign></Style>
+                </Paragraph></Paragraphs>
+                <Style><Border><Style>None</Style></Border></Style>
+              </Textbox>
+            </ReportItems>
+          </Rectangle>
+
+          <Tablix Name="tblDashboard">
+            <Top>2.0cm</Top><Left>0cm</Left><Width>19cm</Width>
+            <DataSetName>DashboardData</DataSetName>
+            <TablixColumnHierarchy>
+              <TablixMembers>
+                <TablixMember/><TablixMember/><TablixMember/><TablixMember/><TablixMember/>
+              </TablixMembers>
+            </TablixColumnHierarchy>
+            <TablixRowHierarchy>
+              <TablixMembers>
+                <TablixMember>
+                  <KeepWithGroup>After</KeepWithGroup>
+                  <RepeatOnNewPage>true</RepeatOnNewPage>
+                  <KeepTogether>true</KeepTogether>
+                </TablixMember>
+                <TablixMember>
+                  <Group Name="grpDashRole">
+                    <GroupExpressions>
+                      <GroupExpression>=Fields!ServerRolle.Value</GroupExpression>
+                    </GroupExpressions>
+                  </Group>
+                  <SortExpressions>
+                    <SortExpression><Value>=Fields!ServerRolle.Value</Value></SortExpression>
+                  </SortExpressions>
+                </TablixMember>
+              </TablixMembers>
+            </TablixRowHierarchy>
+            <TablixBody>
+              <TablixColumns>
+                <TablixColumn><Width>6.5cm</Width></TablixColumn>
+                <TablixColumn><Width>2.0cm</Width></TablixColumn>
+                <TablixColumn><Width>2.5cm</Width></TablixColumn>
+                <TablixColumn><Width>2.5cm</Width></TablixColumn>
+                <TablixColumn><Width>5.5cm</Width></TablixColumn>
+              </TablixColumns>
+              <TablixRows>
+                <TablixRow>
+                  <Height>7mm</Height>
+                  <TablixCells>
+                    <TablixCell><CellContents><Textbox Name="dhServerRolle">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun><Value>Serverrolle</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                      </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                      <Style><BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border><BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder><PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom></Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="dhClients">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun><Value>Clients</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                      </TextRun></TextRuns><Style><TextAlign>Center</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style><BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border><BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom></Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="dhCompliant">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun><Value>Compliant</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                      </TextRun></TextRuns><Style><TextAlign>Center</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style><BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border><BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom></Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="dhNonCompliant">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun><Value>Nicht compliant</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                      </TextRun></TextRuns><Style><TextAlign>Center</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style><BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border><BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom></Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="dhComplianceH">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun><Value>Compliance</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                      </TextRun></TextRuns><Style><TextAlign>Center</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style><BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border><BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom></Style>
+                    </Textbox></CellContents></TablixCell>
+                  </TablixCells>
+                </TablixRow>
+                <TablixRow>
+                  <Height>9mm</Height>
+                  <TablixCells>
+                    <TablixCell><CellContents><Textbox Name="ddServerRolle">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun>
+                        <Value>=Fields!ServerRolle.Value</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><FontWeight>Bold</FontWeight><TextDecoration>Underline</TextDecoration><Color>#0078d4</Color></Style>
+                      </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                      <ActionInfo><Actions><Action>
+                        <Drillthrough>
+                          <ReportName>/ConfigMgr_P01/Softwareverteilung - Anwendungsüberwachung/Anwendungs-Installationsstatus - Übersicht</ReportName>
+                          <Parameters>
+                            <Parameter Name="RolleFilter">
+                              <Value>=Fields!ServerRolle.Value</Value>
+                            </Parameter>
+                          </Parameters>
+                        </Drillthrough>
+                      </Action></Actions></ActionInfo>
+                      <ToolTip>=Fields!ServerRolle.Value &amp; " – Detailansicht öffnen"</ToolTip>
+                      <Style>
+                        <BackgroundColor>=IIF(RowNumber("grpDashRole") MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                        <VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border>
+                        <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                        <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                      </Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="ddClients">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun>
+                        <Value>=Fields!TotalClients.Value</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><FontWeight>Bold</FontWeight><Color>#333333</Color></Style>
+                      </TextRun></TextRuns><Style><TextAlign>Center</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style>
+                        <BackgroundColor>=IIF(RowNumber("grpDashRole") MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                        <VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border>
+                        <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                        <PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                      </Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="ddCompliant">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun>
+                        <Value>=Fields!CompliantClients.Value</Value>
+                        <Style><FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><FontWeight>Bold</FontWeight><Color>#155724</Color></Style>
+                      </TextRun></TextRuns><Style><TextAlign>Center</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style>
+                        <BackgroundColor>#D4EDDA</BackgroundColor>
+                        <VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border>
+                        <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                        <PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                      </Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="ddNonCompliant">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun>
+                        <Value>=IIF(Fields!NonCompliantClients.Value = 0, "–", CStr(Fields!NonCompliantClients.Value))</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><FontWeight>Bold</FontWeight>
+                          <Color>=IIF(Fields!NonCompliantClients.Value = 0, "#AAAAAA", "#721C24")</Color>
+                        </Style>
+                      </TextRun></TextRuns><Style><TextAlign>Center</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style>
+                        <BackgroundColor>=IIF(Fields!NonCompliantClients.Value = 0, "#D4EDDA", "#F8D7DA")</BackgroundColor>
+                        <VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border>
+                        <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                        <PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                      </Style>
+                    </Textbox></CellContents></TablixCell>
+                    <TablixCell><CellContents><Textbox Name="ddComplianceBar">
+                      <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                      <Paragraphs><Paragraph><TextRuns><TextRun>
+                        <Value>=New String(CChar(ChrW(9608)), CInt(Math.Round(Fields!CompliantClients.Value / CDbl(Fields!TotalClients.Value) * 10))) &amp; New String(CChar(ChrW(9617)), 10 - CInt(Math.Round(Fields!CompliantClients.Value / CDbl(Fields!TotalClients.Value) * 10))) &amp; "  " &amp; Format(Fields!CompliantClients.Value / CDbl(Fields!TotalClients.Value), "0%")</Value>
+                        <Style>
+                          <FontFamily>Courier New</FontFamily><FontSize>9pt</FontSize><FontWeight>Bold</FontWeight>
+                          <Color>=IIF(Fields!CompliantClients.Value = Fields!TotalClients.Value, "#155724", IIF(Fields!CompliantClients.Value / CDbl(Fields!TotalClients.Value) &gt;= 0.5, "#856404", "#721C24"))</Color>
+                        </Style>
+                      </TextRun></TextRuns><Style><TextAlign>Left</TextAlign></Style></Paragraph></Paragraphs>
+                      <Style>
+                        <BackgroundColor>=IIF(Fields!CompliantClients.Value = Fields!TotalClients.Value, "#D4EDDA", IIF(Fields!CompliantClients.Value / CDbl(Fields!TotalClients.Value) &gt;= 0.5, "#FFF3CD", "#F8D7DA"))</BackgroundColor>
+                        <VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border>
+                        <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                        <PaddingLeft>6pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                      </Style>
+                    </Textbox></CellContents></TablixCell>
+                  </TablixCells>
+                </TablixRow>
+              </TablixRows>
+            </TablixBody>
+          </Tablix>
+
+        </ReportItems>
+      </Body>
+      <Width>21cm</Width>
+      <Page>
+        <PageHeight>29.7cm</PageHeight>
+        <PageWidth>21cm</PageWidth>
+        <LeftMargin>1cm</LeftMargin>
+        <RightMargin>1cm</RightMargin>
+        <TopMargin>1cm</TopMargin>
+        <BottomMargin>1cm</BottomMargin>
+        <Style/>
+      </Page>
+    </ReportSection>
+  </ReportSections>
+
+  <ReportParametersLayout>
+    <GridLayoutDefinition>
+      <NumberOfColumns>2</NumberOfColumns>
+      <NumberOfRows>1</NumberOfRows>
+      <CellDefinitions>
+        <CellDefinition><ColumnIndex>0</ColumnIndex><RowIndex>0</RowIndex><ParameterName>UserTokenSIDs</ParameterName></CellDefinition>
+        <CellDefinition><ColumnIndex>1</ColumnIndex><RowIndex>0</RowIndex><ParameterName>UserSIDs</ParameterName></CellDefinition>
+      </CellDefinitions>
+    </GridLayoutDefinition>
+  </ReportParametersLayout>
+
+</Report>

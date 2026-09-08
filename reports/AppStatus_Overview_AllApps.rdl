@@ -1,0 +1,577 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition"
+        xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner"
+        xmlns:am="http://schemas.microsoft.com/sqlserver/reporting/authoringmetadata">
+  <rd:ReportUnitType>Cm</rd:ReportUnitType>
+  <rd:ReportServerUrl>http://CMSERVER/ReportServer</rd:ReportServerUrl>
+  <AutoRefresh>0</AutoRefresh>
+
+  <DataSources>
+    <DataSource Name="AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_">
+      <rd:SecurityType>Integrated</rd:SecurityType>
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString>Data Source=CMSERVER;Initial Catalog=CM_P01</ConnectString>
+        <IntegratedSecurity>true</IntegratedSecurity>
+      </ConnectionProperties>
+      <rd:DataSourceID>11111111-1111-1111-1111-111111111111</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+
+  <DataSets>
+
+    <DataSet Name="DataSetAdminID">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@UserTokenSIDs">
+            <Value>=Parameters!UserTokenSIDs.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>select dbo.fn_rbac_GetAdminIDsfromUserSIDs(@UserTokenSIDs) as UserSIDs</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="UserSIDs"><rd:TypeName>System.String</rd:TypeName><DataField>UserSIDs</DataField></Field>
+      </Fields>
+    </DataSet>
+
+    <!-- Nur rol-dev-* Collections im Dropdown -->
+    <DataSet Name="DataSet1">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <CommandText>
+SELECT CollectionID, Name
+FROM v_Collection
+WHERE Name LIKE 'rol-dev-%'
+ORDER BY Name
+        </CommandText>
+      </Query>
+      <Fields>
+        <Field Name="CollectionID"><DataField>CollectionID</DataField></Field>
+        <Field Name="Name"><DataField>Name</DataField></Field>
+      </Fields>
+    </DataSet>
+
+    <!-- Haupt-Dataset: eine Zeile pro Computer pro Software -->
+    <DataSet Name="DataSet0">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@CollID">
+            <Value>=Parameters!CollID.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>
+SELECT
+    CASE
+        WHEN NULLIF(LTRIM(RTRIM(dbo.fn_RemoveNonPrintableChars(arp.DisplayName0))), '') IS NOT NULL
+        THEN dbo.fn_RemoveNonPrintableChars(arp.DisplayName0)
+        WHEN NULLIF(LTRIM(RTRIM(arp.ProdID0)), '') IS NOT NULL
+        THEN arp.ProdID0 + ' (kein Anzeigename)'
+        ELSE '(kein Anzeigename)'
+    END                                                       AS DisplayName0,
+    Publisher0,
+    Version0,
+    sys.Name0                                                 AS ComputerName,
+    @CollID                                                   AS CollectionID
+FROM v_GS_ADD_REMOVE_PROGRAMS arp
+JOIN v_FullCollectionMembership fcm ON arp.ResourceID = fcm.ResourceID
+JOIN v_R_System sys ON sys.ResourceID = arp.ResourceID
+WHERE fcm.CollectionID = @CollID
+UNION ALL
+SELECT
+    CASE
+        WHEN NULLIF(LTRIM(RTRIM(dbo.fn_RemoveNonPrintableChars(arp64.DisplayName0))), '') IS NOT NULL
+        THEN dbo.fn_RemoveNonPrintableChars(arp64.DisplayName0)
+        WHEN NULLIF(LTRIM(RTRIM(arp64.ProdID0)), '') IS NOT NULL
+        THEN arp64.ProdID0 + ' (kein Anzeigename)'
+        ELSE '(kein Anzeigename)'
+    END                                                       AS DisplayName0,
+    Publisher0,
+    Version0,
+    sys.Name0                                                 AS ComputerName,
+    @CollID                                                   AS CollectionID
+FROM v_GS_ADD_REMOVE_PROGRAMS_64 arp64
+JOIN v_FullCollectionMembership fcm ON arp64.ResourceID = fcm.ResourceID
+JOIN v_R_System sys ON sys.ResourceID = arp64.ResourceID
+WHERE fcm.CollectionID = @CollID
+ORDER BY Publisher0, DisplayName0, Version0, ComputerName
+        </CommandText>
+      </Query>
+      <Fields>
+        <Field Name="DisplayName0"><DataField>DisplayName0</DataField></Field>
+        <Field Name="Publisher0"><DataField>Publisher0</DataField></Field>
+        <Field Name="Version0"><DataField>Version0</DataField></Field>
+        <Field Name="ComputerName"><DataField>ComputerName</DataField></Field>
+        <Field Name="CollectionID"><DataField>CollectionID</DataField></Field>
+      </Fields>
+    </DataSet>
+
+  </DataSets>
+
+  <ReportParameters>
+    <ReportParameter Name="UserTokenSIDs">
+      <DataType>String</DataType>
+      <DefaultValue><Values><Value>0</Value></Values></DefaultValue>
+      <Prompt>UserTokenSIDs</Prompt>
+      <Hidden>true</Hidden>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="UserSIDs">
+      <DataType>String</DataType>
+      <DefaultValue><Values><Value>0</Value></Values></DefaultValue>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="CollID">
+      <DataType>String</DataType>
+      <Prompt>Serverrolle</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>DataSet1</DataSetName>
+          <ValueField>CollectionID</ValueField>
+          <LabelField>Name</LabelField>
+        </DataSetReference>
+      </ValidValues>
+    </ReportParameter>
+  </ReportParameters>
+
+  <ReportSections>
+  <ReportSection>
+  <Width>23cm</Width>
+  <Body>
+    <Height>200mm</Height>
+    <Style><BackgroundColor>White</BackgroundColor></Style>
+    <ReportItems>
+
+      <!-- HEADER -->
+      <Rectangle Name="rcHeader">
+        <Top>0cm</Top><Left>0cm</Left><Width>23cm</Width><Height>1.8cm</Height>
+        <Style>
+          <BackgroundColor>#0078d4</BackgroundColor>
+          <Border><Style>None</Style></Border>
+        </Style>
+        <ReportItems>
+          <Textbox Name="txtTitle">
+            <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+            <Top>0.2cm</Top><Left>0.4cm</Left><Width>16cm</Width><Height>0.8cm</Height>
+            <Paragraphs><Paragraph>
+              <TextRuns><TextRun>
+                <Value>Alle Software-Instanzen – Übersicht</Value>
+                <Style><FontFamily>Segoe UI</FontFamily><FontSize>14pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+              </TextRun></TextRuns><Style/>
+            </Paragraph></Paragraphs>
+            <Style><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border></Style>
+          </Textbox>
+          <Textbox Name="txtSubtitle">
+            <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+            <Top>1.0cm</Top><Left>0.4cm</Left><Width>16cm</Width><Height>0.6cm</Height>
+            <Paragraphs><Paragraph>
+              <TextRuns><TextRun>
+                <Value>Installierte Software gruppiert nach Anwendung</Value>
+                <Style><FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><Color>#B8D4FF</Color></Style>
+              </TextRun></TextRuns><Style/>
+            </Paragraph></Paragraphs>
+            <Style><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border></Style>
+          </Textbox>
+          <Textbox Name="txtReportDate">
+            <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+            <Top>0.5cm</Top><Left>21.1cm</Left><Width>1.8cm</Width><Height>0.5cm</Height>
+            <Paragraphs><Paragraph>
+              <TextRuns><TextRun>
+                <Value>=Format(Now(), "dd.MM.yyyy")</Value>
+                <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize><Color>#B8D4FF</Color></Style>
+              </TextRun></TextRuns>
+              <Style><TextAlign>Right</TextAlign></Style>
+            </Paragraph></Paragraphs>
+            <Style><Border><Style>None</Style></Border></Style>
+          </Textbox>
+        </ReportItems>
+      </Rectangle>
+
+      <!-- HAUPTTABELLE -->
+      <Tablix Name="Table0">
+        <Top>2.0cm</Top><Left>0cm</Left><Width>23cm</Width>
+        <DataSetName>DataSet0</DataSetName>
+
+        <TablixColumnHierarchy>
+          <TablixMembers>
+            <TablixMember/><TablixMember/><TablixMember/><TablixMember/><TablixMember/>
+          </TablixMembers>
+        </TablixColumnHierarchy>
+
+        <TablixRowHierarchy>
+          <TablixMembers>
+            <!-- Statische Kopfzeile -->
+            <TablixMember>
+              <KeepWithGroup>After</KeepWithGroup>
+              <RepeatOnNewPage>true</RepeatOnNewPage>
+              <KeepTogether>true</KeepTogether>
+            </TablixMember>
+            <!-- Gruppe: Software -->
+            <TablixMember>
+              <Group Name="grpSoftware">
+                <GroupExpressions>
+                  <GroupExpression>=Fields!DisplayName0.Value</GroupExpression>
+                  <GroupExpression>=Fields!Publisher0.Value</GroupExpression>
+                  <GroupExpression>=Fields!Version0.Value</GroupExpression>
+                </GroupExpressions>
+              </Group>
+              <SortExpressions>
+                <SortExpression><Value>=Fields!Publisher0.Value</Value><Direction>Ascending</Direction></SortExpression>
+                <SortExpression><Value>=Fields!DisplayName0.Value</Value><Direction>Ascending</Direction></SortExpression>
+                <SortExpression><Value>=Fields!Version0.Value</Value><Direction>Ascending</Direction></SortExpression>
+              </SortExpressions>
+              <TablixMembers>
+                <!-- Gruppenheader -->
+                <TablixMember>
+                  <KeepWithGroup>After</KeepWithGroup>
+                  <KeepTogether>true</KeepTogether>
+                </TablixMember>
+                <!-- Detailzeile: Computer (toggle) -->
+                <TablixMember>
+                  <Group Name="grpComputer">
+                    <GroupExpressions>
+                      <GroupExpression>=Fields!ComputerName.Value</GroupExpression>
+                    </GroupExpressions>
+                  </Group>
+                  <SortExpressions>
+                    <SortExpression><Value>=Fields!ComputerName.Value</Value><Direction>Ascending</Direction></SortExpression>
+                  </SortExpressions>
+                  <Visibility>
+                    <Hidden>true</Hidden>
+                    <ToggleItem>dComputerPreview</ToggleItem>
+                  </Visibility>
+                </TablixMember>
+              </TablixMembers>
+            </TablixMember>
+          </TablixMembers>
+        </TablixRowHierarchy>
+
+        <TablixBody>
+          <TablixColumns>
+            <TablixColumn><Width>7.5cm</Width></TablixColumn>
+            <TablixColumn><Width>1.5cm</Width></TablixColumn>
+            <TablixColumn><Width>4.5cm</Width></TablixColumn>
+            <TablixColumn><Width>2.5cm</Width></TablixColumn>
+            <TablixColumn><Width>7.0cm</Width></TablixColumn>
+          </TablixColumns>
+          <TablixRows>
+
+            <!-- ROW 1: Spaltenköpfe -->
+            <TablixRow>
+              <Height>7mm</Height>
+              <TablixCells>
+
+                <TablixCell><CellContents><Textbox Name="Header_DisplayName0">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <UserSort><SortExpression>=Fields!DisplayName0.Value</SortExpression><SortExpressionScope>grpSoftware</SortExpressionScope></UserSort>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>Anzeigename</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="Header_Count">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <UserSort><SortExpression>=CountDistinct(Fields!ComputerName.Value)</SortExpression><SortExpressionScope>grpSoftware</SortExpressionScope></UserSort>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>Anzahl</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                    </TextRun></TextRuns>
+                    <Style><TextAlign>Center</TextAlign></Style>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder>
+                    <PaddingLeft>4pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="Header_Publisher0">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <UserSort><SortExpression>=Fields!Publisher0.Value</SortExpression><SortExpressionScope>grpSoftware</SortExpressionScope></UserSort>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>Herausgeber</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="Header_Version0">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <UserSort><SortExpression>=Fields!Version0.Value</SortExpression><SortExpressionScope>grpSoftware</SortExpressionScope></UserSort>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>Version</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="Header_Computer">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>Computer (klicken zum Aufklappen)</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+              </TablixCells>
+            </TablixRow>
+
+            <!-- ROW 2: Software-Gruppenzeile -->
+            <TablixRow>
+              <Height>7mm</Height>
+              <TablixCells>
+
+                <TablixCell><CellContents><Textbox Name="dSoftwareName">
+                  <CanGrow>true</CanGrow><KeepTogether>true</KeepTogether>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>=Fields!DisplayName0.Value</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>#1a1a1a</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <ToolTip>Computerliste über die Computer-Spalte aufklappen</ToolTip>
+                  <Style>
+                    <BackgroundColor>=IIF(RowNumber("grpSoftware") MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                    <VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="dCount">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>=CountDistinct(Fields!ComputerName.Value, "grpSoftware")</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>#333333</Color></Style>
+                    </TextRun></TextRuns>
+                    <Style><TextAlign>Center</TextAlign></Style>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>=IIF(RowNumber("grpSoftware") MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                    <VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                    <PaddingLeft>4pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="dPublisher">
+                  <CanGrow>true</CanGrow><KeepTogether>true</KeepTogether>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>=Fields!Publisher0.Value</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize><Color>#555555</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>=IIF(RowNumber("grpSoftware") MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                    <VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="dVersion">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>=Fields!Version0.Value</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize><Color>#555555</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <Style>
+                    <BackgroundColor>=IIF(RowNumber("grpSoftware") MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                    <VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <!-- Computer Preview mit Toggle -->
+                <TablixCell><CellContents><Textbox Name="dComputerPreview">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>=First(Fields!ComputerName.Value, "grpSoftware") &amp;
+  IIF(CountDistinct(Fields!ComputerName.Value, "grpSoftware") &gt; 1,
+      ", (+" &amp; (CountDistinct(Fields!ComputerName.Value, "grpSoftware") - 1).ToString() &amp; " weitere)",
+      "")</Value>
+                      <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize><Color>#555555</Color></Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <ToolTip>=CountDistinct(Fields!ComputerName.Value, "grpSoftware") &amp; " Computer – klicken zum Aufklappen"</ToolTip>
+                  <Style>
+                    <BackgroundColor>=IIF(RowNumber("grpSoftware") MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                    <VerticalAlign>Middle</VerticalAlign>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#ddeaf5</Color><Width>0.5pt</Width></BottomBorder>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+              </TablixCells>
+            </TablixRow>
+
+            <!-- ROW 3: Computer-Detailzeile (toggle, ausgeblendet) -->
+            <TablixRow>
+              <Height>7mm</Height>
+              <TablixCells>
+
+                <TablixCell><CellContents><Textbox Name="dDetailBlank1">
+                  <Paragraphs><Paragraph><TextRuns><TextRun>
+                    <Value> </Value>
+                    <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize></Style>
+                  </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                  <Style>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#e8e8e8</Color><Width>0.5pt</Width></BottomBorder>
+                    <BackgroundColor>#F5F8FF</BackgroundColor><PaddingLeft>5pt</PaddingLeft>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="dDetailBlank2">
+                  <Paragraphs><Paragraph><TextRuns><TextRun>
+                    <Value> </Value>
+                    <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize></Style>
+                  </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                  <Style>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#e8e8e8</Color><Width>0.5pt</Width></BottomBorder>
+                    <BackgroundColor>#F5F8FF</BackgroundColor>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="dDetailBlank3">
+                  <Paragraphs><Paragraph><TextRuns><TextRun>
+                    <Value> </Value>
+                    <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize></Style>
+                  </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                  <Style>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#e8e8e8</Color><Width>0.5pt</Width></BottomBorder>
+                    <BackgroundColor>#F5F8FF</BackgroundColor>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <TablixCell><CellContents><Textbox Name="dDetailBlank4">
+                  <Paragraphs><Paragraph><TextRuns><TextRun>
+                    <Value> </Value>
+                    <Style><FontFamily>Segoe UI</FontFamily><FontSize>8pt</FontSize></Style>
+                  </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                  <Style>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#e8e8e8</Color><Width>0.5pt</Width></BottomBorder>
+                    <BackgroundColor>#F5F8FF</BackgroundColor>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+                <!-- Computername mit Link zu AppStatus_Detail_AllApps -->
+                <TablixCell><CellContents><Textbox Name="dComputerName">
+                  <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
+                  <Paragraphs><Paragraph>
+                    <TextRuns><TextRun>
+                      <Value>="    " &amp; Fields!ComputerName.Value</Value>
+                      <Style>
+                        <FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize>
+                        <FontWeight>Bold</FontWeight><TextDecoration>Underline</TextDecoration>
+                        <Color>#0078d4</Color>
+                      </Style>
+                    </TextRun></TextRuns><Style/>
+                  </Paragraph></Paragraphs>
+                  <ActionInfo>
+                    <Actions>
+                      <Action>
+                        <Drillthrough>
+                          <ReportName>/ConfigMgr_P01/Softwareverteilung - Anwendungsüberwachung/Anwendungs-Installationsstatus - Details (Alle Apps)</ReportName>
+                          <Parameters>
+                            <Parameter Name="ComputerName">
+                              <Value>=Fields!ComputerName.Value</Value>
+                            </Parameter>
+                          </Parameters>
+                        </Drillthrough>
+                      </Action>
+                    </Actions>
+                  </ActionInfo>
+                  <ToolTip>=Fields!ComputerName.Value &amp; " – Alle Apps öffnen"</ToolTip>
+                  <Style>
+                    <Border><Style>None</Style></Border>
+                    <BottomBorder><Style>Solid</Style><Color>#e8e8e8</Color><Width>0.5pt</Width></BottomBorder>
+                    <BackgroundColor>#EEF4FB</BackgroundColor>
+                    <VerticalAlign>Middle</VerticalAlign>
+                    <PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                  </Style>
+                </Textbox></CellContents></TablixCell>
+
+              </TablixCells>
+            </TablixRow>
+
+          </TablixRows>
+        </TablixBody>
+      </Tablix>
+
+    </ReportItems>
+  </Body>
+
+  <Page>
+    <PageHeight>29.7cm</PageHeight>
+    <PageWidth>21cm</PageWidth>
+    <LeftMargin>1cm</LeftMargin>
+    <RightMargin>1cm</RightMargin>
+    <TopMargin>1cm</TopMargin>
+    <BottomMargin>1cm</BottomMargin>
+    <Style/>
+  </Page>
+  </ReportSection>
+  </ReportSections>
+
+  <ReportParametersLayout>
+    <GridLayoutDefinition>
+      <NumberOfColumns>2</NumberOfColumns>
+      <NumberOfRows>2</NumberOfRows>
+      <CellDefinitions>
+        <CellDefinition><ColumnIndex>0</ColumnIndex><RowIndex>0</RowIndex><ParameterName>UserTokenSIDs</ParameterName></CellDefinition>
+        <CellDefinition><ColumnIndex>1</ColumnIndex><RowIndex>0</RowIndex><ParameterName>UserSIDs</ParameterName></CellDefinition>
+        <CellDefinition><ColumnIndex>0</ColumnIndex><RowIndex>1</RowIndex><ParameterName>CollID</ParameterName></CellDefinition>
+      </CellDefinitions>
+    </GridLayoutDefinition>
+  </ReportParametersLayout>
+
+</Report>

@@ -1,0 +1,1304 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns:am="http://schemas.microsoft.com/sqlserver/reporting/authoringmetadata">
+  <rd:ReportUnitType>Cm</rd:ReportUnitType>
+  <am:AuthoringMetadata>
+    <am:CreatedBy>
+      <am:Name>MSRB</am:Name>
+      <am:Version>15.1.30001.02</am:Version>
+    </am:CreatedBy>
+    <am:UpdatedBy>
+      <am:Name>MSRB</am:Name>
+      <am:Version>15.1.30001.02</am:Version>
+    </am:UpdatedBy>
+    <am:LastModifiedTimestamp>2026-04-13T10:17:51.5264778Z</am:LastModifiedTimestamp>
+  </am:AuthoringMetadata>
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_">
+      <rd:SecurityType>Integrated</rd:SecurityType>
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString>Data Source=CMSERVER;Initial Catalog=CM_P01</ConnectString>
+        <IntegratedSecurity>true</IntegratedSecurity>
+      </ConnectionProperties>
+      <rd:DataSourceID>11111111-1111-1111-1111-111111111111</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="DataSetAdminID">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@UserTokenSIDs">
+            <Value>=Parameters!UserTokenSIDs.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>select dbo.fn_rbac_GetAdminIDsfromUserSIDs(@UserTokenSIDs) as UserSIDs</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="UserSIDs">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>UserSIDs</DataField>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="AppStatus">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@ComputerName">
+            <Value>=Parameters!ComputerName.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT
+    ads.MachineName,
+    CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0
+                THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1)
+                ELSE app.DisplayName END                                                AS AppName,
+    app.Manufacturer                                          AS Publisher,
+    app.SoftwareVersion,
+    CASE
+        WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL AND c.Cmp = 0  THEN 'Installiert'
+        WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL AND c.Cmp &gt; 0  THEN 'Installiert (neuer)'
+        WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL                 THEN 'Installiert (veraltet)'
+        WHEN arp.DisplayName0 IS NOT NULL AND ads.InstalledState = 2 AND ads.ComplianceState = 1   THEN 'Installiert (Version unbekannt)'
+        WHEN arp.DisplayName0 IS NOT NULL                                                          THEN 'ARP-Eintrag ohne Version'
+        -- No ARP entry: EnforcementState 1001 alone is not proof of an installation
+        WHEN ads.InstalledState = 2 AND ads.ComplianceState = 1                                    THEN 'Installiert (kein ARP-Eintrag)'
+        WHEN ads.EnforcementState IS NULL                                                          THEN 'Ausstehend'
+        WHEN ads.EnforcementState BETWEEN 1000 AND 1999                                            THEN 'Erfolg gemeldet, nicht nachgewiesen (' + CAST(ads.EnforcementState AS nvarchar(10)) + ')'
+        WHEN ads.EnforcementState BETWEEN 2000 AND 2999                                            THEN 'In Bearbeitung (' + CAST(ads.EnforcementState AS nvarchar(10)) + ')'
+        WHEN ads.EnforcementState BETWEEN 3000 AND 3999                                            THEN 'Anforderungen nicht erfüllt'
+        WHEN ads.EnforcementState BETWEEN 4000 AND 4999                                            THEN 'Unbekannt (' + CAST(ads.EnforcementState AS nvarchar(10)) + ')'
+        WHEN ads.EnforcementState BETWEEN 5000 AND 5999                                            THEN 'Fehlgeschlagen (' + CAST(ads.EnforcementState AS nvarchar(10)) + ')'
+        ELSE 'Unbekannt (' + CAST(ads.EnforcementState AS nvarchar(10)) + ')'
+    END                                             AS StatusText,
+    CASE
+        WHEN arp.InstallDate0 IS NOT NULL AND LEN(arp.InstallDate0) = 8 AND TRY_CONVERT(date, arp.InstallDate0, 112) IS NOT NULL
+        THEN CONVERT(date, arp.InstallDate0, 112)
+        ELSE NULL
+    END                                            AS InstallDatum,
+    CASE
+        WHEN arp.DisplayName0 IS NULL     THEN 'Kein ARP-Eintrag'
+        WHEN arp.InstallDate0 IS NULL     THEN 'Datum nicht hinterlegt'
+        ELSE NULL
+    END                                                       AS InstallDatumHinweis,
+    arp.Version0                                              AS ARP_Version,
+    ws.LastHWScan                                             AS LetzteInventory,
+    DATEDIFF(day, ws.LastHWScan, GETDATE())                   AS InventoryAlterTage
+FROM vAppDeploymentAssetDetails ads
+INNER JOIN v_ApplicationAssignment aa
+    ON  aa.AssignmentID   = ads.AssignmentID
+    AND aa.OfferTypeID    = 0
+    AND aa.CollectionName LIKE 'ins-req-dev-%'
+INNER JOIN v_Applications app ON app.ModelId = aa.AppModelID
+OUTER APPLY (
+    -- The ARP entry of the deployed product: the shortest display name that
+    -- starts with the application name, highest version first.
+    SELECT TOP 1 DisplayName0, InstallDate0, Version0
+    FROM (
+        SELECT DisplayName0, InstallDate0, Version0, ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS
+        UNION ALL
+        SELECT DisplayName0, InstallDate0, Version0, ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS_64
+    ) arp_all
+    WHERE arp_all.ResourceID = ads.MachineID
+      AND arp_all.DisplayName0 LIKE CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0
+                THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1)
+                ELSE app.DisplayName END + '%'
+    ORDER BY LEN(arp_all.DisplayName0) ASC, arp_all.Version0 DESC
+) arp
+CROSS APPLY (
+    -- Both versions cut or padded to four numeric segments, left aligned.
+    -- PARSENAME counts from the right, so without this '26.02' against
+    -- '25.01.00.0' compares 26 with 25's revision and the older build wins.
+    SELECT
+        Ist  = CASE WHEN LEN(x.i) - LEN(REPLACE(x.i, '.', '')) &gt;= 4
+             THEN LEFT(x.i, CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.') + 1) + 1) + 1) - 1)
+             ELSE x.i + REPLICATE('.0', 3 - (LEN(x.i) - LEN(REPLACE(x.i, '.', ''))))
+        END,
+        Soll = CASE WHEN LEN(x.s) - LEN(REPLACE(x.s, '.', '')) &gt;= 4
+             THEN LEFT(x.s, CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.') + 1) + 1) + 1) - 1)
+             ELSE x.s + REPLICATE('.0', 3 - (LEN(x.s) - LEN(REPLACE(x.s, '.', ''))))
+        END
+    FROM (SELECT i = LTRIM(RTRIM(ISNULL(arp.Version0, ''))), s = LTRIM(RTRIM(ISNULL(app.SoftwareVersion, '')))) x
+) v
+CROSS APPLY (
+    -- 1 = installed is newer, 0 = same, -1 = installed is older
+    SELECT Cmp = CASE
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 4) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 4) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 3) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 3) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 2) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 2) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 1) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 1) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) THEN -1
+        ELSE 0 END
+) c
+LEFT JOIN v_GS_WORKSTATION_STATUS ws ON ws.ResourceID = ads.MachineID
+WHERE ads.MachineName = @ComputerName
+ORDER BY AppName</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="MachineName">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>MachineName</DataField>
+        </Field>
+        <Field Name="AppName">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>AppName</DataField>
+        </Field>
+        <Field Name="Publisher">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>Publisher</DataField>
+        </Field>
+        <Field Name="SoftwareVersion">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>SoftwareVersion</DataField>
+        </Field>
+        <Field Name="StatusText">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>StatusText</DataField>
+        </Field>
+        <Field Name="InstallDatum">
+          <rd:TypeName>System.DateTime</rd:TypeName>
+          <DataField>InstallDatum</DataField>
+        </Field>
+        <Field Name="InstallDatumHinweis">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>InstallDatumHinweis</DataField>
+        </Field>
+        <Field Name="ARP_Version">
+          <rd:TypeName>System.String</rd:TypeName>
+          <DataField>ARP_Version</DataField>
+        </Field>
+        <Field Name="LetzteInventory">
+          <rd:TypeName>System.DateTime</rd:TypeName>
+          <DataField>LetzteInventory</DataField>
+        </Field>
+        <Field Name="InventoryAlterTage">
+          <rd:TypeName>System.Int32</rd:TypeName>
+          <DataField>InventoryAlterTage</DataField>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="Summary">
+      <Query>
+        <DataSourceName>AutoGen__5C6358F2_4BB6_4a1b_A16E_8D96795D8602_</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@ComputerName">
+            <Value>=Parameters!ComputerName.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT
+    COUNT(s.IsInstalled)          AS Apps_Gesamt,
+    ISNULL(SUM(s.IsInstalled), 0) AS Apps_Installiert
+FROM (
+    SELECT CASE
+        -- ARP entry with a version: the comparison decides, nothing else
+        WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL AND c.Cmp &gt;= 0 THEN 1
+        WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL                THEN 0
+        -- ARP entry without a version, or no ARP entry at all: only the
+        -- client's own installed + compliant counts (products that do not
+        -- register in ARP, e.g. Oracle). EnforcementState 1001 alone is not
+        -- proof of an installation.
+        WHEN ads.InstalledState = 2 AND ads.ComplianceState = 1                                  THEN 1
+        -- Requirements not met: not applicable, neither installed nor missing
+        WHEN ads.EnforcementState &gt;= 3000 AND ads.EnforcementState &lt; 4000                        THEN NULL
+        ELSE 0
+    END AS IsInstalled
+    FROM vAppDeploymentAssetDetails ads
+INNER JOIN v_ApplicationAssignment aa
+    ON  aa.AssignmentID   = ads.AssignmentID
+    AND aa.OfferTypeID    = 0
+    AND aa.CollectionName LIKE 'ins-req-dev-%'
+INNER JOIN v_Applications app ON app.ModelId = aa.AppModelID
+    OUTER APPLY (
+    -- The ARP entry of the deployed product: the shortest display name that
+    -- starts with the application name, highest version first.
+    SELECT TOP 1 DisplayName0, Version0
+    FROM (
+        SELECT DisplayName0, InstallDate0, Version0, ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS
+        UNION ALL
+        SELECT DisplayName0, InstallDate0, Version0, ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS_64
+    ) arp_all
+    WHERE arp_all.ResourceID = ads.MachineID
+      AND arp_all.DisplayName0 LIKE CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0
+                THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1)
+                ELSE app.DisplayName END + '%'
+    ORDER BY LEN(arp_all.DisplayName0) ASC, arp_all.Version0 DESC
+) arp
+    CROSS APPLY (
+    -- Both versions cut or padded to four numeric segments, left aligned.
+    -- PARSENAME counts from the right, so without this '26.02' against
+    -- '25.01.00.0' compares 26 with 25's revision and the older build wins.
+    SELECT
+        Ist  = CASE WHEN LEN(x.i) - LEN(REPLACE(x.i, '.', '')) &gt;= 4
+             THEN LEFT(x.i, CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.', CHARINDEX('.', x.i + '.') + 1) + 1) + 1) - 1)
+             ELSE x.i + REPLICATE('.0', 3 - (LEN(x.i) - LEN(REPLACE(x.i, '.', ''))))
+        END,
+        Soll = CASE WHEN LEN(x.s) - LEN(REPLACE(x.s, '.', '')) &gt;= 4
+             THEN LEFT(x.s, CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.', CHARINDEX('.', x.s + '.') + 1) + 1) + 1) - 1)
+             ELSE x.s + REPLICATE('.0', 3 - (LEN(x.s) - LEN(REPLACE(x.s, '.', ''))))
+        END
+    FROM (SELECT i = LTRIM(RTRIM(ISNULL(arp.Version0, ''))), s = LTRIM(RTRIM(ISNULL(app.SoftwareVersion, '')))) x
+) v
+CROSS APPLY (
+    -- 1 = installed is newer, 0 = same, -1 = installed is older
+    SELECT Cmp = CASE
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 4) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 4) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 3) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 3) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 2) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 2) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) THEN -1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 1) AS INT), 0) &gt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) THEN 1
+        WHEN ISNULL(TRY_CAST(PARSENAME(v.Ist, 1) AS INT), 0) &lt; ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) THEN -1
+        ELSE 0 END
+) c
+    WHERE ads.MachineName = @ComputerName
+) s</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="Apps_Gesamt">
+          <rd:TypeName>System.Int32</rd:TypeName>
+          <DataField>Apps_Gesamt</DataField>
+        </Field>
+        <Field Name="Apps_Installiert">
+          <rd:TypeName>System.Int32</rd:TypeName>
+          <DataField>Apps_Installiert</DataField>
+        </Field>
+      </Fields>
+    </DataSet>
+  </DataSets>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <ReportItems>
+          <Rectangle Name="rcHeader">
+            <ReportItems>
+              <Textbox Name="txtTitle">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>Anwendungs-Installationsstatus - Details</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>14pt</FontSize>
+                          <FontWeight>Bold</FontWeight>
+                          <Color>White</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style />
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.2cm</Top>
+                <Left>0.4cm</Left>
+                <Height>0.8cm</Height>
+                <Width>13cm</Width>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                  <VerticalAlign>Middle</VerticalAlign>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtSubtitle">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>=Parameters!ComputerName.Value</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <Color>#b8d4ff</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style />
+                  </Paragraph>
+                </Paragraphs>
+                <Top>1cm</Top>
+                <Left>0.4cm</Left>
+                <Height>0.6cm</Height>
+                <Width>13cm</Width>
+                <ZIndex>1</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                  <VerticalAlign>Middle</VerticalAlign>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtBadge">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>=First(Fields!Apps_Installiert.Value, "Summary") &amp; " / " &amp; First(Fields!Apps_Gesamt.Value, "Summary")</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>11pt</FontSize>
+                          <FontWeight>Bold</FontWeight>
+                          <Color>White</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style>
+                      <TextAlign>Center</TextAlign>
+                    </Style>
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.4cm</Top>
+                <Left>14.8cm</Left>
+                <Height>1cm</Height>
+                <Width>2.2cm</Width>
+                <ZIndex>2</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                  <BackgroundColor>#107c10</BackgroundColor>
+                  <VerticalAlign>Middle</VerticalAlign>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtBadgeLabel">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>Installiert / Gesamt</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>7pt</FontSize>
+                          <Color>#b8d4ff</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style>
+                      <TextAlign>Center</TextAlign>
+                    </Style>
+                  </Paragraph>
+                </Paragraphs>
+                <Top>1.4cm</Top>
+                <Left>14.3cm</Left>
+                <Height>0.3cm</Height>
+                <Width>3.2cm</Width>
+                <ZIndex>3</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtBackLink">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>← Übersicht</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>8pt</FontSize>
+                          <TextDecoration>Underline</TextDecoration>
+                          <Color>#b8d4ff</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style><TextAlign>Right</TextAlign></Style>
+                  </Paragraph>
+                </Paragraphs>
+                <ActionInfo>
+                  <Actions>
+                    <Action>
+                      <Drillthrough>
+                        <ReportName>/ConfigMgr_P01/Softwareverteilung - Anwendungsüberwachung/Anwendungs-Installationsstatus - Übersicht</ReportName>
+                      </Drillthrough>
+                    </Action>
+                  </Actions>
+                </ActionInfo>
+                <Top>1.1cm</Top>
+                <Left>17cm</Left>
+                <Height>0.5cm</Height>
+                <Width>3cm</Width>
+                <ZIndex>5</ZIndex>
+
+                <Style>
+                  <Border><Style>None</Style></Border>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtReportDate">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>=Format(Now(), "dd.MM.yyyy")</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>8pt</FontSize>
+                          <Color>#b8d4ff</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style>
+                      <TextAlign>Right</TextAlign>
+                    </Style>
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.5cm</Top>
+                <Left>17.28833cm</Left>
+                <Height>0.5cm</Height>
+                <Width>1.71167cm</Width>
+                <ZIndex>4</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                </Style>
+              </Textbox>
+            </ReportItems>
+            <Height>1.8cm</Height>
+            <Width>19.92604cm</Width>
+            <Style>
+              <Border>
+                <Style>None</Style>
+              </Border>
+              <BackgroundColor>#0078d4</BackgroundColor>
+            </Style>
+          </Rectangle>
+          <Textbox Name="txtInventoryHinweis">
+            <CanGrow>true</CanGrow>
+            <KeepTogether>true</KeepTogether>
+            <Paragraphs>
+              <Paragraph>
+                <TextRuns>
+                  <TextRun>
+                    <Value>=IIF(IsNothing(First(Fields!LetzteInventory.Value, "AppStatus")),
+  "Kein Hardware Inventory vorhanden - Installationsdaten nicht verfuegbar",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 7,
+      "Hardware Inventory veraltet (" &amp; First(Fields!InventoryAlterTage.Value, "AppStatus") &amp; " Tage) - Daten moeglicherweise unvollstaendig",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 2,
+      "Hardware Inventory " &amp; First(Fields!InventoryAlterTage.Value, "AppStatus") &amp; " Tage alt",
+      "Hardware Inventory aktuell  (Stand: " &amp; Format(First(Fields!LetzteInventory.Value, "AppStatus"), "dd.MM.yyyy HH:mm") &amp; ")")))</Value>
+                    <Style>
+                      <FontFamily>Segoe UI</FontFamily>
+                      <FontSize>8pt</FontSize>
+                      <Color>=IIF(IsNothing(First(Fields!LetzteInventory.Value, "AppStatus")), "#721C24",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 7, "#721C24",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 2, "#856404", "#155724")))</Color>
+                    </Style>
+                  </TextRun>
+                </TextRuns>
+                <Style />
+              </Paragraph>
+            </Paragraphs>
+            <Top>1.9cm</Top>
+            <Height>0.7cm</Height>
+            <Width>19.92604cm</Width>
+            <ZIndex>1</ZIndex>
+            <Style>
+              <Border>
+                <Color>=IIF(IsNothing(First(Fields!LetzteInventory.Value, "AppStatus")), "#F5C6CB",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 7, "#F5C6CB",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 2, "#FFEEBA", "#C3E6CB")))</Color>
+                <Style>Solid</Style>
+                <Width>0.5pt</Width>
+              </Border>
+              <BackgroundColor>=IIF(IsNothing(First(Fields!LetzteInventory.Value, "AppStatus")), "#F8D7DA",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 7, "#F8D7DA",
+  IIF(First(Fields!InventoryAlterTage.Value, "AppStatus") &gt; 2, "#FFF3CD", "#D4EDDA")))</BackgroundColor>
+              <VerticalAlign>Middle</VerticalAlign>
+              <PaddingLeft>6pt</PaddingLeft>
+              <PaddingRight>6pt</PaddingRight>
+              <PaddingTop>3pt</PaddingTop>
+              <PaddingBottom>3pt</PaddingBottom>
+            </Style>
+          </Textbox>
+          <Tablix Name="tblApps">
+            <TablixBody>
+              <TablixColumns>
+                <TablixColumn>
+                  <Width>5.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>4.0cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.2cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.8cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.8cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.3cm</Width>
+                </TablixColumn>
+              </TablixColumns>
+              <TablixRows>
+                <TablixRow>
+                  <Height>7mm</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="hAppName">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Anwendung</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8.5pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#003f73</Color>
+                              <Style>Solid</Style>
+                              <Width>1pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>#005a9e</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="hPublisher">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Herausgeber</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8.5pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#003f73</Color>
+                              <Style>Solid</Style>
+                              <Width>1pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>#005a9e</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="hVersion">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Version (SOLL)</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8.5pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#003f73</Color>
+                              <Style>Solid</Style>
+                              <Width>1pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>#005a9e</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="hARPVersion">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Version (IST)</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8.5pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Center</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#003f73</Color>
+                              <Style>Solid</Style>
+                              <Width>1pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>#005a9e</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>4pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="hStatus">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Status</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8.5pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Center</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#003f73</Color>
+                              <Style>Solid</Style>
+                              <Width>1pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>#005a9e</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>4pt</PaddingLeft>
+                            <PaddingRight>4pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="hInstallDatum">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Installationsdatum</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8.5pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Center</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#003f73</Color>
+                              <Style>Solid</Style>
+                              <Width>1pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>#005a9e</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>4pt</PaddingLeft>
+                            <PaddingRight>4pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+                <TablixRow>
+                  <Height>7mm</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="dAppName">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!AppName.Value</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8.5pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>#1a1a1a</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#ddeaf5</Color>
+                              <Style>Solid</Style>
+                              <Width>0.5pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>=IIF(RowNumber(Nothing) MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="dPublisher">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!Publisher.Value</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>#555555</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#ddeaf5</Color>
+                              <Style>Solid</Style>
+                              <Width>0.5pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>=IIF(RowNumber(Nothing) MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="dVersion">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!SoftwareVersion.Value</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>#555555</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#ddeaf5</Color>
+                              <Style>Solid</Style>
+                              <Width>0.5pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>=IIF(RowNumber(Nothing) MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="dARPVersion">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=IIF(IsNothing(Fields!ARP_Version.Value), "–",
+  IIF(Fields!ARP_Version.Value = Fields!SoftwareVersion.Value,
+      Fields!ARP_Version.Value,
+      Fields!ARP_Version.Value &amp; " *"))</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8pt</FontSize>
+                                    <FontWeight>=IIF(IsNothing(Fields!ARP_Version.Value), "Normal",
+  IIF(Fields!ARP_Version.Value = Fields!SoftwareVersion.Value, "Normal", "Bold"))</FontWeight>
+                                    <Color>=IIF(IsNothing(Fields!ARP_Version.Value), "#AAAAAA",
+  IIF(Fields!ARP_Version.Value = Fields!SoftwareVersion.Value, "#555555", "#856404"))</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Center</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#ddeaf5</Color>
+                              <Style>Solid</Style>
+                              <Width>0.5pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>=IIF(RowNumber(Nothing) MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>4pt</PaddingLeft>
+                            <PaddingRight>4pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="dStatus">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!StatusText.Value</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>=SWITCH(
+  Fields!StatusText.Value = "Installiert", "#155724",
+  Fields!StatusText.Value = "Installiert (neuer)", "#155724",
+  Fields!StatusText.Value = "Installiert (veraltet)", "#856404",
+  Fields!StatusText.Value = "Ausstehend", "#856404",
+  Fields!StatusText.Value = "Download fehlgeschlagen", "#721C24",
+  Fields!StatusText.Value = "Anforderungen nicht erfüllt", "#6B2D00",
+  true, "#333333")</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Center</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#ddeaf5</Color>
+                              <Style>Solid</Style>
+                              <Width>0.5pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>=SWITCH(
+  Fields!StatusText.Value = "Installiert", "#D4EDDA",
+  Fields!StatusText.Value = "Installiert (neuer)", "#D4EDDA",
+  Fields!StatusText.Value = "Installiert (veraltet)", "#FFF3CD",
+  Fields!StatusText.Value = "Ausstehend", "#FFF3CD",
+  Fields!StatusText.Value = "Download fehlgeschlagen", "#F8D7DA",
+  Fields!StatusText.Value = "Anforderungen nicht erfüllt", "#FFE0B2",
+  true, IIF(RowNumber(Nothing) MOD 2 = 0, "#EEF4FB", "White"))</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>4pt</PaddingLeft>
+                            <PaddingRight>4pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="dInstallDatum">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=IIF(IsNothing(Fields!InstallDatum.Value), IIF(IsNothing(Fields!InstallDatumHinweis.Value), "-", Fields!InstallDatumHinweis.Value), Format(CDate(Fields!InstallDatum.Value), "dd.MM.yyyy"))</Value>
+                                  <Style>
+                                    <FontFamily>Segoe UI</FontFamily>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>=IIF(IsNothing(Fields!InstallDatum.Value), "#AAAAAA", "#333333")</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Center</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Style>None</Style>
+                            </Border>
+                            <BottomBorder>
+                              <Color>#ddeaf5</Color>
+                              <Style>Solid</Style>
+                              <Width>0.5pt</Width>
+                            </BottomBorder>
+                            <BackgroundColor>=IIF(RowNumber(Nothing) MOD 2 = 0, "#EEF4FB", "White")</BackgroundColor>
+                            <VerticalAlign>Middle</VerticalAlign>
+                            <PaddingLeft>4pt</PaddingLeft>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+              </TablixRows>
+            </TablixBody>
+            <TablixColumnHierarchy>
+              <TablixMembers>
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+              </TablixMembers>
+            </TablixColumnHierarchy>
+            <TablixRowHierarchy>
+              <TablixMembers>
+                <TablixMember>
+                  <KeepWithGroup>After</KeepWithGroup>
+                  <RepeatOnNewPage>true</RepeatOnNewPage>
+                  <KeepTogether>true</KeepTogether>
+                </TablixMember>
+                <TablixMember>
+                  <Group Name="Details">
+                    <DataElementName>Detail</DataElementName>
+                  </Group>
+                </TablixMember>
+              </TablixMembers>
+            </TablixRowHierarchy>
+            <DataSetName>AppStatus</DataSetName>
+            <Top>2.8cm</Top>
+            <Height>14mm</Height>
+            <Width>19.92604cm</Width>
+            <ZIndex>2</ZIndex>
+            <Style />
+          </Tablix>
+          <Rectangle Name="rcFooter">
+            <ReportItems>
+              <Textbox Name="txtL1">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>Installiert</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>7.5pt</FontSize>
+                          <Color>#155724</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style />
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.15cm</Top>
+                <Left>0.3cm</Left>
+                <Height>0.4cm</Height>
+                <Width>3cm</Width>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtL2">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>Ausstehend</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>7.5pt</FontSize>
+                          <Color>#856404</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style />
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.15cm</Top>
+                <Left>3.6cm</Left>
+                <Height>0.4cm</Height>
+                <Width>3.2cm</Width>
+                <ZIndex>1</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtL3">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>Download fehlgeschlagen</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>7.5pt</FontSize>
+                          <Color>#721c24</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style />
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.15cm</Top>
+                <Left>7.1cm</Left>
+                <Height>0.4cm</Height>
+                <Width>5.2cm</Width>
+                <ZIndex>2</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtL4">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>Anforderungen nicht erfüllt</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>7.5pt</FontSize>
+                          <Color>#6b2d00</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style />
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.15cm</Top>
+                <Left>12.6cm</Left>
+                <Height>0.4cm</Height>
+                <Width>6.2cm</Width>
+                <ZIndex>3</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                </Style>
+              </Textbox>
+              <Textbox Name="txtFooterNote">
+                <KeepTogether>true</KeepTogether>
+                <Paragraphs>
+                  <Paragraph>
+                    <TextRuns>
+                      <TextRun>
+                        <Value>* Installationsdatum basiert auf Hardware Inventory (ARP). Anwendungen ohne ARP-Eintrag (z.B. Oracle) zeigen kein Datum.</Value>
+                        <Style>
+                          <FontFamily>Segoe UI</FontFamily>
+                          <FontSize>7pt</FontSize>
+                          <Color>#888888</Color>
+                        </Style>
+                      </TextRun>
+                    </TextRuns>
+                    <Style />
+                  </Paragraph>
+                </Paragraphs>
+                <Top>0.55cm</Top>
+                <Left>0.3cm</Left>
+                <Height>0.4cm</Height>
+                <Width>18.6cm</Width>
+                <ZIndex>4</ZIndex>
+                <Style>
+                  <Border>
+                    <Style>None</Style>
+                  </Border>
+                </Style>
+              </Textbox>
+            </ReportItems>
+            <Top>13cm</Top>
+            <Height>1cm</Height>
+            <Width>19cm</Width>
+            <ZIndex>3</ZIndex>
+            <Style>
+              <Border>
+                <Color>#e0e0e0</Color>
+                <Style>Solid</Style>
+                <Width>0.5pt</Width>
+              </Border>
+              <BackgroundColor>#f5f5f5</BackgroundColor>
+            </Style>
+          </Rectangle>
+        </ReportItems>
+        <Height>160mm</Height>
+        <Style>
+          <BackgroundColor>White</BackgroundColor>
+        </Style>
+      </Body>
+      <Width>19.92604cm</Width>
+      <Page>
+        <PageHeight>29.7cm</PageHeight>
+        <PageWidth>21cm</PageWidth>
+        <LeftMargin>1cm</LeftMargin>
+        <RightMargin>1cm</RightMargin>
+        <TopMargin>1cm</TopMargin>
+        <BottomMargin>1cm</BottomMargin>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <ReportParameters>
+    <ReportParameter Name="UserTokenSIDs">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>0</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>UserTokenSIDs</Prompt>
+      <Hidden>true</Hidden>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="UserSIDs">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>0</Value>
+        </Values>
+      </DefaultValue>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="ComputerName">
+      <DataType>String</DataType>
+      <Prompt>Computername</Prompt>
+    </ReportParameter>
+
+  </ReportParameters>
+  <ReportParametersLayout>
+    <GridLayoutDefinition>
+      <NumberOfColumns>2</NumberOfColumns>
+      <NumberOfRows>2</NumberOfRows>
+      <CellDefinitions>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>UserTokenSIDs</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>1</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>UserSIDs</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>1</RowIndex>
+          <ParameterName>ComputerName</ParameterName>
+        </CellDefinition>
+      </CellDefinitions>
+    </GridLayoutDefinition>
+  </ReportParametersLayout>
+</Report>

@@ -1,0 +1,146 @@
+﻿<#
+.SYNOPSIS
+    Runs every dataset query of the RDL files against the site database.
+
+.DESCRIPTION
+    Reads the queries straight out of the RDL files, binds the report
+    parameters to sample values taken from the site, executes them and
+    reports rows, duration and errors per dataset. The columns a query
+    returns are checked against the fields the RDL expects, so a renamed
+    column shows up here and not as "#Error" in the rendered report.
+
+    Nothing is written. Run it on the site server, or anywhere the site
+    database can be reached with Windows authentication.
+
+.PARAMETER SqlServer
+    SQL Server hosting the site database, e.g. CM01 or SQL01\INST1.
+
+.PARAMETER Database
+    Site database, CM_<SiteCode>.
+
+.PARAMETER Path
+    Folder holding the RDL files. Default: .\customized if it exists, else
+    the folder of this script - so the generic files can be tested too, the
+    placeholders only matter for the drillthrough paths, not for the queries.
+
+.PARAMETER ComputerName
+    Client for the per-client reports. Default: the first client that has a
+    required application deployment.
+
+.EXAMPLE
+    .\Test-ReportQueries.ps1 -SqlServer CM01 -Database CM_P01
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string]$SqlServer,
+    [Parameter(Mandatory = $true)][string]$Database,
+    [string]$Path,
+    [string]$ComputerName,
+    [string]$RoleFilter = 'Alle',
+    [string]$CollectionID,
+    [int]$TimeoutSeconds = 300
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not $Path) {
+    $Path = Join-Path $PSScriptRoot 'customized'
+    if (-not (Test-Path -LiteralPath $Path)) { $Path = $PSScriptRoot }
+}
+
+$connectionString = "Data Source=$SqlServer;Initial Catalog=$Database;Integrated Security=SSPI;Application Name=sccm-reports test"
+$connection = New-Object System.Data.SqlClient.SqlConnection $connectionString
+$connection.Open()
+Write-Host "Connected to $SqlServer / $Database" -ForegroundColor Cyan
+
+function Invoke-Scalar {
+    param([string]$Sql)
+    $command = $connection.CreateCommand()
+    $command.CommandText = $Sql
+    $command.CommandTimeout = $TimeoutSeconds
+    return $command.ExecuteScalar()
+}
+
+# Sample values for the parameters, from the site itself.
+if (-not $ComputerName) {
+    $ComputerName = [string](Invoke-Scalar "SELECT TOP 1 ads.MachineName FROM vAppDeploymentAssetDetails ads INNER JOIN v_ApplicationAssignment aa ON aa.AssignmentID = ads.AssignmentID AND aa.OfferTypeID = 0 ORDER BY ads.MachineName")
+    if (-not $ComputerName) { $ComputerName = [string](Invoke-Scalar "SELECT TOP 1 Name0 FROM v_R_System WHERE Client0 = 1 ORDER BY Name0") }
+}
+if (-not $CollectionID) {
+    $CollectionID = [string](Invoke-Scalar "SELECT TOP 1 CollectionID FROM v_Collection WHERE Name LIKE 'rol-%' ORDER BY Name")
+    if (-not $CollectionID) { $CollectionID = 'SMS00001' }
+}
+Write-Host ("Sample values: ComputerName = [{0}], RoleFilter = [{1}], CollectionID = [{2}]" -f $ComputerName, $RoleFilter, $CollectionID) -ForegroundColor Gray
+
+$sampleValues = @{
+    '@ComputerName'  = $ComputerName
+    '@RolleFilter'   = $RoleFilter
+    '@CollID'        = $CollectionID
+    '@UserTokenSIDs' = '0'
+    '@UserSIDs'      = '0'
+}
+
+$namespace = @{ r = 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition' }
+$results = @()
+
+foreach ($file in (Get-ChildItem -LiteralPath $Path -Filter '*.rdl' | Sort-Object Name)) {
+    [xml]$rdl = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
+    $manager = New-Object System.Xml.XmlNamespaceManager $rdl.NameTable
+    $manager.AddNamespace('r', $namespace.r)
+
+    foreach ($dataset in $rdl.SelectNodes('/r:Report/r:DataSets/r:DataSet', $manager)) {
+        $name  = $dataset.GetAttribute('Name')
+        $query = $dataset.SelectSingleNode('r:Query/r:CommandText', $manager).InnerText
+        $expectedFields = @($dataset.SelectNodes('r:Fields/r:Field', $manager) | ForEach-Object {
+            $dataField = $_.SelectSingleNode('r:DataField', $manager)
+            if ($dataField) { $dataField.InnerText }
+        })
+        $queryParameters = @($dataset.SelectNodes('r:Query/r:QueryParameters/r:QueryParameter', $manager) | ForEach-Object { $_.GetAttribute('Name') })
+
+        $command = $connection.CreateCommand()
+        $command.CommandText = $query
+        $command.CommandTimeout = $TimeoutSeconds
+        foreach ($parameter in $queryParameters) {
+            $value = $(if ($sampleValues.ContainsKey($parameter)) { $sampleValues[$parameter] } else { '' })
+            $null = $command.Parameters.AddWithValue($parameter, $value)
+        }
+
+        $watch = [System.Diagnostics.Stopwatch]::StartNew()
+        $rows = 0
+        $columns = @()
+        $error = ''
+        try {
+            $reader = $command.ExecuteReader()
+            try {
+                for ($i = 0; $i -lt $reader.FieldCount; $i++) { $columns += $reader.GetName($i) }
+                while ($reader.Read()) { $rows++ }
+            }
+            finally { $reader.Close() }
+        }
+        catch { $error = $_.Exception.Message }
+        $watch.Stop()
+
+        $missing = @($expectedFields | Where-Object { $_ -and $_ -notin $columns })
+
+        $status = if ($error) { 'ERROR' } elseif ($missing.Count -gt 0) { 'FIELDS' } else { 'ok' }
+        $results += [pscustomobject]@{
+            Report   = $file.BaseName
+            DataSet  = $name
+            Status   = $status
+            Rows     = $rows
+            Seconds  = [math]::Round($watch.Elapsed.TotalSeconds, 1)
+            Problem  = $(if ($error) { $error } elseif ($missing.Count -gt 0) { 'missing columns: ' + ($missing -join ', ') } else { '' })
+        }
+
+        $colour = switch ($status) { 'ok' { 'Green' } 'FIELDS' { 'Yellow' } default { 'Red' } }
+        Write-Host ("  {0,-6} {1,-34} {2,-18} {3,6} rows {4,6} s  {5}" -f $status, $file.BaseName, $name, $rows, $watch.Elapsed.TotalSeconds.ToString('0.0'), $results[-1].Problem) -ForegroundColor $colour
+    }
+}
+
+$connection.Close()
+
+$failed = @($results | Where-Object { $_.Status -ne 'ok' }).Count
+Write-Host ""
+Write-Host ("{0} dataset(s), {1} with problems" -f $results.Count, $failed) -ForegroundColor $(if ($failed) { 'Red' } else { 'Green' })
+$results | Format-Table -AutoSize
+exit $(if ($failed) { 1 } else { 0 })
