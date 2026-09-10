@@ -116,12 +116,9 @@ ORDER BY AppName, SollVersion, IstVersion, ComputerName</CommandText>
   <ReportParameters>
     <ReportParameter Name="UserTokenSIDs">
       <DataType>String</DataType>
-      <DefaultValue><Values><Value>0</Value></Values></DefaultValue>
-      <Prompt>UserTokenSIDs</Prompt>
+      <DefaultValue><Values><Value>=SrsResources.UserIdentity.GetUserSIDs(User!UserID)</Value></Values></DefaultValue>
       <Hidden>true</Hidden>
-      <MultiValue>true</MultiValue>
-    </ReportParameter>
-    <ReportParameter Name="UserSIDs">
+    </ReportParameter>    <ReportParameter Name="UserSIDs">
       <DataType>String</DataType>
       <DefaultValue>
         <DataSetReference>
@@ -527,5 +524,8 @@ ORDER BY AppName, SollVersion, IstVersion, ComputerName</CommandText>
       </CellDefinitions>
     </GridLayoutDefinition>
   </ReportParametersLayout>
+  <CodeModules>
+    <CodeModule>SrsResources, culture=neutral</CodeModule>
+  </CodeModules>
 
 </Report>
