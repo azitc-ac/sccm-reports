@@ -113,12 +113,46 @@ the two scripts were added.
 
 `Test-ReportQueries.ps1` was run against the AZI lab site (CM1, `CM_AZI`): all 18 datasets
 of the seven reports return without errors, every column the reports expect is there, and
-no query takes longer than 0.6 seconds. The outdated-apps report returned no rows on that
-site, which is consistent with the overview (every client compliant) but not a proof of the
-comparison on real data yet. `Publish-Reports.ps1` uploaded all seven reports to the same site's reporting point. The
-first render from the console failed on the reporting point's missing SELECT right on
-`vAppDeploymentAssetDetails`, which is why the reports now go through
-`fn_rbac_AppDeploymentAssetDetails`; the rendered reports have not been checked since.
+no query takes longer than 0.6 seconds. `Publish-Reports.ps1` uploaded all seven reports to
+the same site's reporting point. The first render from the console failed on the reporting
+point's missing SELECT right on `vAppDeploymentAssetDetails`, which is why the reports now go
+through `fn_rbac_AppDeploymentAssetDetails`.
+
+2026-09-10: **the reports were rendered, not only tested.** All seven were re-published and
+rendered through URL access on CM1, and the numbers are the ones the site holds:
+
+| Report | Rendered |
+| --- | --- |
+| Compliance-Übersicht | 3 roles, 11 clients - Standardserver 9 (5 compliant), Terminalserver 1, Testserver-reqApps 1 |
+| Übersicht | renders |
+| Installationsdaten | 18 installations across the applications, with dates and `Kein ARP-Eintrag` where there is none |
+| Details (`ComputerName=ADFS2`) | 7-Zip 26.02 and Notepad++ 8.9.8, both `Installiert` |
+| Details (Alle Apps) (`ComputerName=ADFS2`) | the client's full ARP list |
+| Übersicht (Alle Apps) (`CollID=` a `rol-dev-` collection) | the software across that role |
+| Veraltete Apps | no rows - see below |
+
+The drillthrough targets need their parameter to render: `ComputerName` for both detail
+reports, `CollID` for the all-apps overview. That is what the links supply.
+
+**What the signature turned out to be.** `sys.parameters` gives
+`fn_rbac_AppDeploymentAssetDetails(@LocaleID int, @UserSIDs nvarchar(max))`. The locale
+decides nothing here: `0`, `1031`, `1033`, `2057` and even a nonsense `9999` all return the
+same 172 rows, because these names come from the application definitions and are not
+localised. What decides whether the function answers at all is `@UserSIDs` - it wants
+ConfigMgr **admin ids**, not SIDs (a raw SID list fails with a conversion error), and an id
+that belongs to no administrator returns zero rows without complaining.
+
+**Still open, and now measured: the reports are console-only.** Rendered outside the console
+every one of them fails with `rsParameterError`. `UserTokenSIDs` defaults to `0`,
+`fn_rbac_GetAdminIDsfromUserSIDs('0')` returns `NULL`, and a query based parameter that
+returns nothing stops the report before it starts. `'disabled'` in that place resolves to
+`Disabled` and returns all 172 rows - so making the reports work in the web portal is one
+default value away, but that value switches RBAC off for everyone who may open them. That
+is a decision about who sees what, not a bug fix, and it has not been taken.
+
+The outdated-apps report still returns no rows, which is consistent with the overview but
+does not prove the version comparison. A client with a genuinely older version is the
+missing test.
 
 ## Notes and limitations
 
