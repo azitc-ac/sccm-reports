@@ -117,7 +117,7 @@ foreach ($file in (Get-ChildItem -LiteralPath $Path -Filter '*.rdl' | Sort-Objec
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         $rows = 0
         $columns = @()
-        $error = ''
+        $queryError = ''
         try {
             $reader = $command.ExecuteReader()
             try {
@@ -127,10 +127,10 @@ foreach ($file in (Get-ChildItem -LiteralPath $Path -Filter '*.rdl' | Sort-Objec
             finally { $reader.Close() }
         }
         catch {
-            $error = $_.Exception.Message
+            $queryError = $_.Exception.Message
             # A function called with the wrong number of arguments: say what
             # it actually takes, so the fix is a lookup and not a guess.
-            if ($error -match 'arguments were supplied for the procedure or function (\w+)') {
+            if ($queryError -match 'arguments were supplied for the procedure or function (\w+)') {
                 $function = $Matches[1]
                 try {
                     $signature = New-Object System.Collections.ArrayList
@@ -139,7 +139,7 @@ foreach ($file in (Get-ChildItem -LiteralPath $Path -Filter '*.rdl' | Sort-Objec
                     $signatureReader = $lookup.ExecuteReader()
                     try { while ($signatureReader.Read()) { $null = $signature.Add(('{0} {1}' -f $signatureReader.GetString(0), $signatureReader.GetString(1))) } }
                     finally { $signatureReader.Close() }
-                    $error += (' - {0} takes: {1}' -f $function, ($signature -join ', '))
+                    $queryError += (' - {0} takes: {1}' -f $function, ($signature -join ', '))
                 }
                 catch { }
             }
@@ -148,14 +148,14 @@ foreach ($file in (Get-ChildItem -LiteralPath $Path -Filter '*.rdl' | Sort-Objec
 
         $missing = @($expectedFields | Where-Object { $_ -and $_ -notin $columns })
 
-        $status = if ($error) { 'ERROR' } elseif ($missing.Count -gt 0) { 'FIELDS' } else { 'ok' }
+        $status = if ($queryError) { 'ERROR' } elseif ($missing.Count -gt 0) { 'FIELDS' } else { 'ok' }
         $results += [pscustomobject]@{
             Report   = $file.BaseName
             DataSet  = $name
             Status   = $status
             Rows     = $rows
             Seconds  = [math]::Round($watch.Elapsed.TotalSeconds, 1)
-            Problem  = $(if ($error) { $error } elseif ($missing.Count -gt 0) { 'missing columns: ' + ($missing -join ', ') } else { '' })
+            Problem  = $(if ($queryError) { $queryError } elseif ($missing.Count -gt 0) { 'missing columns: ' + ($missing -join ', ') } else { '' })
         }
 
         $colour = switch ($status) { 'ok' { 'Green' } 'FIELDS' { 'Yellow' } default { 'Red' } }

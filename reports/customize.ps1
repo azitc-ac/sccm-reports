@@ -5,25 +5,42 @@
 # actual server, database and SSRS folder names.
 #
 # Usage:
-#   1. Adjust the three variables below
-#   2. Run:  .\customize.ps1
-#   3. Deploy the files from .\customized\ via Report Builder
+#   .\customize.ps1 -SqlServer CM01 -Database CM_P01 -SsrsFolder ConfigMgr_P01
+#
+#   or edit the defaults below and run .\customize.ps1 on its own, then
+#   deploy the files from .\customized\ via Report Builder or
+#   Publish-Reports.ps1.
+#
+# Passing them is the safer way round: this file is under version control
+# and the reports it writes to .\customized\ are not, so a server name
+# typed in here is one commit away from being published, while the same
+# name passed on the command line never leaves the machine.
 #
 # Requires: PowerShell 5.1 or later
 # ============================================================
 
+[CmdletBinding()]
+param(
+    # SQL Server hosting the CM database (e.g. CM01 or SQL01\INST1)
+    [string]$SqlServer = 'YOURSQLSERVER',
+
+    # ConfigMgr site database (CM_<SiteCode>)
+    [string]$Database = 'CM_ABC',
+
+    # SSRS root folder of your ConfigMgr instance
+    [string]$SsrsFolder = 'ConfigMgr_ABC',
+
+    # SSRS folder below $SsrsFolder that holds these reports (drillthrough paths)
+    [string]$ReportFolder = 'Softwareverteilung - Anwendungsüberwachung',
+
+    # target collections of required application deployments
+    [string]$RequiredCollectionPrefix = 'ins-req-dev-',
+
+    # device collections per server role
+    [string]$RoleCollectionPrefix = 'rol-dev-'
+)
+
 $ErrorActionPreference = 'Stop'
-
-# --- Adjust these three values for your environment -----------
-$SqlServer   = 'YOURSQLSERVER'        # SQL Server hosting the CM database (e.g. CM01 or SQL01\INST1)
-$Database    = 'CM_ABC'               # ConfigMgr site database (CM_<SiteCode>)
-$SsrsFolder  = 'ConfigMgr_ABC'        # SSRS root folder of your ConfigMgr instance
-
-# Optional - only change these if your naming differs from the defaults:
-$ReportFolder             = 'Softwareverteilung - Anwendungsüberwachung'  # SSRS folder below $SsrsFolder that holds these reports (drillthrough paths)
-$RequiredCollectionPrefix = 'ins-req-dev-'   # target collections of required application deployments
-$RoleCollectionPrefix     = 'rol-dev-'       # device collections per server role
-# --------------------------------------------------------------
 
 $sourceDir = $PSScriptRoot
 $targetDir = Join-Path $PSScriptRoot 'customized'
