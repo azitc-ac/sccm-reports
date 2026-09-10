@@ -142,13 +142,31 @@ localised. What decides whether the function answers at all is `@UserSIDs` - it 
 ConfigMgr **admin ids**, not SIDs (a raw SID list fails with a conversion error), and an id
 that belongs to no administrator returns zero rows without complaining.
 
-**Still open, and now measured: the reports are console-only.** Rendered outside the console
-every one of them fails with `rsParameterError`. `UserTokenSIDs` defaults to `0`,
-`fn_rbac_GetAdminIDsfromUserSIDs('0')` returns `NULL`, and a query based parameter that
-returns nothing stops the report before it starts. `'disabled'` in that place resolves to
-`Disabled` and returns all 172 rows - so making the reports work in the web portal is one
-default value away, but that value switches RBAC off for everyone who may open them. That
-is a decision about who sees what, not a bug fix, and it has not been taken.
+**`UserTokenSIDs` had to be resolved on the report server.** It was declared with a literal
+default of `0`, a `Prompt` and `MultiValue`. `fn_rbac_GetAdminIDsfromUserSIDs('0')` is `NULL`,
+a query based parameter that returns nothing stops a report before it starts, and so every
+report failed with `rsParameterError` - from the console as well as from the web portal, with
+`ParameterPresenter.GetParameters` at the top of the console's stack.
+
+The built-in ConfigMgr reports on the same server show what it takes, and it is two things,
+not one:
+
+```xml
+<ReportParameter Name="UserTokenSIDs">
+  <DataType>String</DataType>
+  <DefaultValue><Values><Value>=SrsResources.UserIdentity.GetUserSIDs(User!UserID)</Value></Values></DefaultValue>
+  <Hidden>true</Hidden>
+</ReportParameter>
+...
+<CodeModules>
+  <CodeModule>SrsResources, culture=neutral</CodeModule>
+</CodeModules>
+```
+
+Without the `CodeModules` reference the upload itself is refused with `'SrsResources' is not
+declared`. With both, the caller is resolved on the server: the reports now render with
+nothing passed in - four of the seven directly, the three drillthrough targets once their
+`ComputerName` or `CollID` arrives from the link. No RBAC was switched off to get there.
 
 The outdated-apps report still returns no rows, which is consistent with the overview but
 does not prove the version comparison. A client with a genuinely older version is the
