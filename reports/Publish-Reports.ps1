@@ -42,12 +42,17 @@ param(
     [Parameter(Mandatory = $true)][string]$ReportServerUrl,
     [Parameter(Mandatory = $true)][string]$SsrsFolder,
     [string]$ReportFolder = 'Softwareverteilung - Anwendungsüberwachung',
-    [string]$Path = (Join-Path $PSScriptRoot 'customized'),
+    [string]$Path,
     [string]$SharedDataSourceName = '{5C6358F2-4BB6-4a1b-A16E-8D96795D8602}',
     [switch]$EmbeddedDataSource
 )
 
 $ErrorActionPreference = 'Stop'
+
+# $PSScriptRoot is still empty while the param block is being bound, so the
+# default cannot be written there - Join-Path then refuses the empty string
+# and the script dies before its first line runs.
+if (-not $Path) { $Path = Join-Path $PSScriptRoot 'customized' }
 
 # The display names the drillthrough links between the reports refer to.
 $displayNames = @{
