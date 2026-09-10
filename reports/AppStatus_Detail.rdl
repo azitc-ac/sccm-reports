@@ -532,22 +532,22 @@ CROSS APPLY (
             <TablixBody>
               <TablixColumns>
                 <TablixColumn>
-                  <Width>5.5cm</Width>
+                  <Width>5cm</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>4.0cm</Width>
+                  <Width>3.3cm</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>2.2cm</Width>
+                  <Width>3.2cm</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>2.8cm</Width>
+                  <Width>2.9cm</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>2.8cm</Width>
+                  <Width>4.4cm</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>2.3cm</Width>
+                  <Width>3.3cm</Width>
                 </TablixColumn>
               </TablixColumns>
               <TablixRows>
@@ -1245,10 +1245,10 @@ CROSS APPLY (
           <BackgroundColor>White</BackgroundColor>
         </Style>
       </Body>
-      <Width>19.92604cm</Width>
+      <Width>22.3cm</Width>
       <Page>
-        <PageHeight>29.7cm</PageHeight>
-        <PageWidth>21cm</PageWidth>
+        <PageHeight>21cm</PageHeight>
+        <PageWidth>29.7cm</PageWidth>
         <LeftMargin>1cm</LeftMargin>
         <RightMargin>1cm</RightMargin>
         <TopMargin>1cm</TopMargin>
