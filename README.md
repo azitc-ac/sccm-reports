@@ -172,6 +172,34 @@ The outdated-apps report still returns no rows, which is consistent with the ove
 does not prove the version comparison. A client with a genuinely older version is the
 missing test.
 
+2026-09-11: **the built-in `Software Distribution - Application Monitoring` folder had lost
+all of its reports.** The reporting point held 498 reports - our 7 plus 491 built-in - against
+512 RDL in `D:\Program Files\SMS_SRSRP\Reports`. Every other folder matched the source one
+for one; this folder and its `- Hidden` subfolder still existed but were empty, 21 reports
+gone (All application deployments, Application compliance, Application deployments per asset,
+Deployment status, …). How they were deleted is unknown; `Publish-Reports.ps1` never deletes,
+and the folder is the English original of the name our own folder carries in German, which
+makes a mix-up in the portal the most likely story.
+
+The reporting point does not notice this on its own. `srsrp.log` shows why: each monitoring
+cycle asks the site database for reports *waiting for deployment* (`Found 0 RDL reports
+waiting for deployment in ConfigMgr database`) and never compares the server with the source
+folder, so a restart of the component changes nothing. What does help is resetting its
+initialisation flag, in an elevated shell on the reporting point:
+
+```powershell
+Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\SMS\SRSRP' -Name SRSInitializeState -Value 0
+Restart-Service SMS_EXECUTIVE
+```
+
+On the next cycle the component walks every folder, deletes the empty ones and recreates
+them, redeploys all 512 built-in reports (about 0.75 s each, roughly seven minutes in all),
+re-applies the RBAC security policy per folder, and sets the flag back to `1` when it is
+done; it reads `2` while the run is in progress. Folders it does not know - ours - are logged
+as `is kept` and left alone. Afterwards the server held 519 reports, 512 + 7, and the folder
+had all 21 back. The whole run is in `srsrp.log`, with one `Deployed report [...]` line per
+report and no errors.
+
 ## Notes and limitations
 
 - The deployment status comes from `fn_rbac_AppDeploymentAssetDetails(1033, @UserSIDs)`, the same
