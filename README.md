@@ -1,4 +1,4 @@
-# SCCM Application Status Reports
+﻿# SCCM Application Status Reports
 
 SSRS reports (RDL) for monitoring required application deployments in Microsoft Configuration Manager (SCCM/MECM), with version-aware compliance evaluation based on Add/Remove Programs inventory data.
 
@@ -59,6 +59,22 @@ Application display names are matched against ARP entries using the part before 
 Hardware inventory must include Add/Remove Programs (default inventory classes `SMS_G_System_ADD_REMOVE_PROGRAMS` and `..._64`).
 
 ## Deployment
+
+### Update and deploy in one step
+
+`update.ps1` is "git pull" for a machine without git: it downloads the current state of this
+repository from GitHub, replaces the repository files in its folder (`reports\customized\` and
+files not in the repository are left alone) and then runs `customize.ps1` and
+`Publish-Reports.ps1` - both find the site's names themselves. `-Test` runs
+`Test-ReportQueries.ps1` in between, `-NoDeploy` only replaces the files, `-WhatIf` lists what
+would be replaced. First install: download the repository once (Code > Download ZIP, or
+`git clone`), unpack, run `update.ps1` from the folder.
+
+```powershell
+.\update.ps1
+```
+
+### Step by step
 
 On a machine that knows the site — the site server, or a workstation with the console
 installed — the three scripts find SQL Server, site database and SSRS folder themselves,
