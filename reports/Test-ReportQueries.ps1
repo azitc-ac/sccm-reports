@@ -13,10 +13,14 @@
     database can be reached with Windows authentication.
 
 .PARAMETER SqlServer
-    SQL Server hosting the site database, e.g. CM01 or SQL01\INST1.
+    SQL Server hosting the site database, e.g. CM01 or SQL01\INST1. Asked of
+    the site when not given.
 
 .PARAMETER Database
-    Site database, CM_<SiteCode>.
+    Site database, CM_<SiteCode>. Asked of the site when not given.
+
+.PARAMETER SmsProvider
+    The SMS provider to ask, when the automatic search does not find one.
 
 .PARAMETER Path
     Folder holding the RDL files. Default: .\customized if it exists, else
@@ -28,20 +32,48 @@
     required application deployment.
 
 .EXAMPLE
+    .\Test-ReportQueries.ps1
+
+    On the site server, or anywhere the console has been connected, server
+    and database are found by asking the site.
+
+.EXAMPLE
     .\Test-ReportQueries.ps1 -SqlServer CM01 -Database CM_P01
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string]$SqlServer,
-    [Parameter(Mandatory = $true)][string]$Database,
+    [string]$SqlServer,
+    [string]$Database,
     [string]$Path,
     [string]$ComputerName,
     [string]$RoleFilter = 'Alle',
     [string]$CollectionID,
+    [string]$SmsProvider,
     [int]$TimeoutSeconds = 300
 )
 
 $ErrorActionPreference = 'Stop'
+
+# ------------------------------------------------------------
+# Whatever was not passed, ask the site for it.
+# ------------------------------------------------------------
+if (-not $SqlServer -or -not $Database) {
+    $detector = Join-Path $PSScriptRoot 'Get-ReportEnvironment.ps1'
+    if (-not (Test-Path -LiteralPath $detector)) {
+        throw ('Get-ReportEnvironment.ps1 is not next to this script, so the site database cannot be found. ' +
+               'Pass -SqlServer and -Database.')
+    }
+
+    Write-Host 'Asking the site for the database...' -ForegroundColor Cyan
+    . $detector
+    $site = Get-ReportEnvironment -SmsProvider $SmsProvider
+
+    if (-not $SqlServer) { $SqlServer = $site.SqlServer }
+    if (-not $Database)  { $Database  = $site.Database }
+}
+
+if (-not $SqlServer) { throw 'No SQL Server - pass -SqlServer.' }
+if (-not $Database)  { throw 'No site database - pass -Database.' }
 
 if (-not $Path) {
     $Path = Join-Path $PSScriptRoot 'customized'

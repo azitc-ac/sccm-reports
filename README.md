@@ -60,18 +60,58 @@ Hardware inventory must include Add/Remove Programs (default inventory classes `
 
 ## Deployment
 
+On a machine that knows the site — the site server, or a workstation with the console
+installed — the three scripts find SQL Server, site database and SSRS folder themselves,
+so there is nothing to type in and no server name to accidentally commit:
+
+```powershell
+.\customize.ps1
+.\Test-ReportQueries.ps1
+.\Publish-Reports.ps1
+```
+
+Step by step:
+
 1. Clone the repository.
-2. Edit the variables at the top of `reports/customize.ps1`:
-   - `$SqlServer` — SQL Server hosting the site database
-   - `$Database` — site database name (`CM_<SiteCode>`)
-   - `$SsrsFolder` — SSRS root folder of your ConfigMgr instance (`ConfigMgr_<SiteCode>`)
-   - optionally `$ReportFolder` and the two collection prefixes, if your naming differs
-3. Run `customize.ps1` (PowerShell 5.1+). Customized copies are written to `reports\customized\`.
-4. Run `Test-ReportQueries.ps1 -SqlServer <server> -Database CM_<SiteCode>` — see *Testing*.
-5. Run `Publish-Reports.ps1 -ReportServerUrl http://<reporting point>/ReportServer -SsrsFolder ConfigMgr_<SiteCode>`.
-   It creates the report folder, uploads every RDL under its display name, and points the
-   reports at the shared ConfigMgr data source, so they run with the reporting point's
-   credentials like the built-in reports do. Repeatable; existing reports are overwritten.
+2. Run `customize.ps1` (PowerShell 5.1+). It asks the site for the names it needs and writes
+   customized copies to `reports\customized\`. Pass `-ReportFolder` or the two collection
+   prefixes if your naming differs from the conventions above.
+3. Run `Test-ReportQueries.ps1` — see *Testing*.
+4. Run `Publish-Reports.ps1`. It creates the report folder, uploads every RDL under its
+   display name, and points the reports at the shared ConfigMgr data source, so they run with
+   the reporting point's credentials like the built-in reports do. Repeatable; existing
+   reports are overwritten.
+
+Anything you pass wins over what is detected, which is what you need from a machine that
+cannot reach the site:
+
+```powershell
+.\customize.ps1 -SqlServer CM01 -Database CM_P01 -SsrsFolder ConfigMgr_P01
+.\Test-ReportQueries.ps1 -SqlServer CM01 -Database CM_P01
+.\Publish-Reports.ps1 -ReportServerUrl http://CM01/ReportServer -SsrsFolder ConfigMgr_P01
+```
+
+`customize.ps1 -NoDetect` keeps the generic placeholders in place, for preparing files for
+somebody else's environment.
+
+### What is detected, and from where
+
+`reports/Get-ReportEnvironment.ps1` does the looking. Dot-source it and call
+`Get-ReportEnvironment` to see the result on its own, including where each value came from:
+
+| Value | Source |
+|---|---|
+| SMS provider | the console's connection history (`HKCU:\SOFTWARE\Microsoft\ConfigMgr10\AdminUI\MRU`), this machine's own site server identity, or `SMS_ProviderLocation` |
+| Site code | `SMS_ProviderLocation` on that provider |
+| SQL Server, database | the site server's registry, `HKLM:\SOFTWARE\Microsoft\SMS\SQL Server` (a named instance is stored there as `INSTANCE\CM_ABC` and is split apart again) |
+| Report server, URL | `SMS_SRSServerInformation` in `root\SMS\site_<SiteCode>` |
+| SSRS folder | `ConfigMgr_<SiteCode>`, confirmed against the report server by listing its root folder |
+
+Every step falls back to the next and each is caught on its own, so a site that answers three
+of five questions still gives three answers. A value that had to be guessed rather than read
+is reported as guessed — a wrong name that is silently invented is worse than one that says
+it was invented. It reads only; nothing is written and no ConfigMgr object is touched. Run it
+as a user who may read the site, the same rights the console needs.
 
 Uploading by hand via Report Builder or the web portal works too. The reports then have to
 carry these display names, because the drillthrough links between them refer to them:
@@ -99,8 +139,9 @@ report. Nothing is written. Run it on the site server or anywhere the database c
 with Windows authentication:
 
 ```powershell
+.\Test-ReportQueries.ps1
+.\Test-ReportQueries.ps1 -ComputerName SRV042 -RoleFilter Fileserver
 .\Test-ReportQueries.ps1 -SqlServer CM01 -Database CM_P01
-.\Test-ReportQueries.ps1 -SqlServer CM01 -Database CM_P01 -ComputerName SRV042 -RoleFilter Fileserver
 ```
 
 Exit code 1 when any dataset fails.
@@ -199,6 +240,14 @@ done; it reads `2` while the run is in progress. Folders it does not know - ours
 as `is kept` and left alone. Afterwards the server held 519 reports, 512 + 7, and the folder
 had all 21 back. The whole run is in `srsrp.log`, with one `Deployed report [...]` line per
 report and no errors.
+
+2026-09-16: the three scripts no longer need server names typed in. `Get-ReportEnvironment.ps1`
+reads the SMS provider, site code, SQL Server, site database and SSRS folder out of the site
+itself, and `customize.ps1`, `Test-ReportQueries.ps1` and `Publish-Reports.ps1` fall back to
+it for every value not passed. The registry and WMI reads it uses are the ones the
+SCCMAppHelper setup assistant and the AZITC toolkit already use against live sites; the
+wiring in these three scripts has not yet been run against one, so the first run is worth
+watching. Where a value had to be guessed, it says so.
 
 ## Notes and limitations
 

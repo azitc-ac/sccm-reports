@@ -18,10 +18,14 @@
 
 .PARAMETER ReportServerUrl
     The web service URL of the reporting point, e.g. http://CM01/ReportServer.
-    Not the portal URL (/Reports).
+    Not the portal URL (/Reports). Asked of the site when not given.
 
 .PARAMETER SsrsFolder
     The ConfigMgr root folder on the report server, ConfigMgr_<SiteCode>.
+    Asked of the site when not given.
+
+.PARAMETER SmsProvider
+    The SMS provider to ask, when the automatic search does not find one.
 
 .PARAMETER ReportFolder
     The folder below it that holds these reports. Must match what
@@ -35,19 +39,47 @@
     whoever views the report) instead of switching to the shared one.
 
 .EXAMPLE
+    .\Publish-Reports.ps1
+
+    On a machine that knows the site, report server and folder are found by
+    asking it.
+
+.EXAMPLE
     .\Publish-Reports.ps1 -ReportServerUrl http://CM01/ReportServer -SsrsFolder ConfigMgr_P01
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string]$ReportServerUrl,
-    [Parameter(Mandatory = $true)][string]$SsrsFolder,
+    [string]$ReportServerUrl,
+    [string]$SsrsFolder,
     [string]$ReportFolder = 'Softwareverteilung - Anwendungsüberwachung',
     [string]$Path,
     [string]$SharedDataSourceName = '{5C6358F2-4BB6-4a1b-A16E-8D96795D8602}',
+    [string]$SmsProvider,
     [switch]$EmbeddedDataSource
 )
 
 $ErrorActionPreference = 'Stop'
+
+# ------------------------------------------------------------
+# Whatever was not passed, ask the site for it.
+# ------------------------------------------------------------
+if (-not $ReportServerUrl -or -not $SsrsFolder) {
+    $detector = Join-Path $PSScriptRoot 'Get-ReportEnvironment.ps1'
+    if (-not (Test-Path -LiteralPath $detector)) {
+        throw ('Get-ReportEnvironment.ps1 is not next to this script, so the report server cannot be found. ' +
+               'Pass -ReportServerUrl and -SsrsFolder.')
+    }
+
+    Write-Host 'Asking the site for the report server...' -ForegroundColor Cyan
+    . $detector
+    $site = Get-ReportEnvironment -SmsProvider $SmsProvider
+
+    if (-not $ReportServerUrl) { $ReportServerUrl = $site.ReportServerUrl }
+    if (-not $SsrsFolder)      { $SsrsFolder      = $site.SsrsFolder }
+}
+
+if (-not $ReportServerUrl) { throw 'No report server URL - pass -ReportServerUrl.' }
+if (-not $SsrsFolder)      { throw 'No SSRS folder - pass -SsrsFolder.' }
 
 # $PSScriptRoot is still empty while the param block is being bound, so the
 # default cannot be written there - Join-Path then refuses the empty string
