@@ -51,6 +51,19 @@ param(
 $Deploy = -not $NoDeploy
 
 $ErrorActionPreference = 'Stop'
+
+# Started with "Run with PowerShell" or a double-click, the window closes with
+# the last line of output - too fast to read what happened. Then the script
+# waits for Enter at the end, also after an error. Started from an open shell
+# it does not; the parent process tells the two apart.
+$keepWindow = $false
+try {
+    $me = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $PID" -ErrorAction Stop
+    $parent = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $($me.ParentProcessId)" -ErrorAction Stop
+    $keepWindow = ([string]$parent.Name -notin 'powershell.exe', 'pwsh.exe', 'cmd.exe', 'WindowsTerminal.exe', 'powershell_ise.exe', 'Code.exe', 'conhost.exe')
+} catch { }
+$failed = $false
+try {
 $repoOwner = 'azitc-ac'
 $repoName  = 'sccm-reports'
 $keep      = @('reports\customized\')   # generated on this machine, never replaced
@@ -137,3 +150,14 @@ if ($Deploy -and -not $WhatIfPreference) {
 elseif (-not $WhatIfPreference) {
     Write-Info 'Next: .\reports\customize.ps1, .\reports\Test-ReportQueries.ps1, .\reports\Publish-Reports.ps1 - or run update.ps1 without -NoDeploy.'
 }
+}
+catch {
+    $failed = $true
+    Write-Host ''
+    Write-Host ("FAILED: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    if ($_.InvocationInfo -and $_.InvocationInfo.ScriptLineNumber) { Write-Host ("    at line {0}" -f $_.InvocationInfo.ScriptLineNumber) -ForegroundColor DarkGray }
+}
+finally {
+    if ($keepWindow) { Write-Host ''; $null = Read-Host 'Press Enter to close' }
+}
+if ($failed) { exit 1 }
