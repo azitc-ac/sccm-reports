@@ -53,7 +53,8 @@
             <Value>=Parameters!ComputerName.Value</Value>
           </QueryParameter>
         </QueryParameters>
-        <CommandText>SELECT
+        <CommandText>WITH Deployed AS (
+SELECT
     ads.MachineName,
     CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0
                 THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1)
@@ -88,7 +89,11 @@
     END                                                       AS InstallDatumHinweis,
     arp.Version0                                              AS ARP_Version,
     ws.LastHWScan                                             AS LetzteInventory,
-    DATEDIFF(day, ws.LastHWScan, GETDATE())                   AS InventoryAlterTage
+    DATEDIFF(day, ws.LastHWScan, GETDATE())                   AS InventoryAlterTage,
+    RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) AS varchar(6)), 6)
+      + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) AS varchar(6)), 6)
+      + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) AS varchar(6)), 6)
+      + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) AS varchar(6)), 6) AS SollSort
 FROM fn_rbac_AppDeploymentAssetDetails(1033, @UserSIDs) ads
 INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
@@ -140,6 +145,21 @@ CROSS APPLY (
 ) c
 LEFT JOIN v_GS_WORKSTATION_STATUS ws ON ws.ResourceID = ads.MachineID
 WHERE ads.MachineName = @ComputerName
+)
+-- One row per product: the newest version deployed to this client. A product
+-- deployed in two versions - the new one published, the old deployment not
+-- retired yet - was listed and counted twice, and the older row said nothing
+-- the newer one does not say better. AndereVersionen carries how many were
+-- dropped, for the hint on the target version.
+SELECT MachineName, AppName, Publisher, SoftwareVersion, StatusText, InstallDatum, InstallDatumHinweis,
+       ARP_Version, LetzteInventory, InventoryAlterTage, AndereVersionen
+FROM (
+    SELECT d.*,
+           ROW_NUMBER() OVER (PARTITION BY d.AppName ORDER BY d.SollSort DESC, d.SoftwareVersion DESC) AS rn,
+           COUNT(*)     OVER (PARTITION BY d.AppName) - 1                      AS AndereVersionen
+    FROM Deployed d
+) x
+WHERE x.rn = 1
 ORDER BY AppName</CommandText>
       </Query>
       <Fields>
@@ -183,7 +203,7 @@ ORDER BY AppName</CommandText>
           <rd:TypeName>System.Int32</rd:TypeName>
           <DataField>InventoryAlterTage</DataField>
         </Field>
-      </Fields>
+      <Field Name="AndereVersionen"><DataField>AndereVersionen</DataField></Field></Fields>
     </DataSet>
     <DataSet Name="Summary">
       <Query>
@@ -200,7 +220,11 @@ ORDER BY AppName</CommandText>
     COUNT(s.IsInstalled)          AS Apps_Gesamt,
     ISNULL(SUM(s.IsInstalled), 0) AS Apps_Installiert
 FROM (
-    SELECT CASE
+    SELECT ROW_NUMBER() OVER (PARTITION BY CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0 THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1) ELSE app.DisplayName END ORDER BY    RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) AS varchar(6)), 6)
+      + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) AS varchar(6)), 6)
+      + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) AS varchar(6)), 6)
+      + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) AS varchar(6)), 6) DESC, app.SoftwareVersion DESC) AS rn,
+    CASE
         -- ARP entry with a version: the comparison decides, nothing else
         WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL AND c.Cmp &gt;= 0 THEN 1
         WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL                THEN 0
@@ -263,7 +287,8 @@ CROSS APPLY (
         ELSE 0 END
 ) c
     WHERE ads.MachineName = @ComputerName
-) s</CommandText>
+) s
+WHERE s.rn = 1</CommandText>
       </Query>
       <Fields>
         <Field Name="Apps_Gesamt">
@@ -880,7 +905,8 @@ CROSS APPLY (
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>=Fields!SoftwareVersion.Value</Value>
+                                  <Value>=Fields!SoftwareVersion.Value &amp; IIF(Fields!AndereVersionen.Value &gt; 0, " +", "")</Value>
+                                  <ToolTip>=IIF(Fields!AndereVersionen.Value &gt; 0, "Diesem Client " &amp; IIF(Fields!AndereVersionen.Value = 1, "ist noch eine Ã¤ltere Version", "sind noch " &amp; Fields!AndereVersionen.Value &amp; " Ã¤ltere Versionen") &amp; " dieses Produkts zugewiesen. Angezeigt wird die neueste; die alte Verteilung sollte zurÃ¼ckgezogen werden.", Nothing)</ToolTip>
                                   <Style>
                                     <FontFamily>Segoe UI</FontFamily>
                                     <FontSize>8pt</FontSize>

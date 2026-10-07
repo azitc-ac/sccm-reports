@@ -57,7 +57,12 @@
         <CommandText>WITH AppStatusPerDevice AS (
     SELECT
         ads.MachineID,
-        CASE
+        ROW_NUMBER() OVER (PARTITION BY ads.MachineID,
+            CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0 THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1) ELSE app.DisplayName END
+            ORDER BY RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) AS varchar(6)), 6)
+                   + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) AS varchar(6)), 6)
+                   + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) AS varchar(6)), 6)
+                   + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) AS varchar(6)), 6) DESC, app.SoftwareVersion DESC) AS rn,        CASE
         -- ARP entry with a version: the comparison decides, nothing else
         WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL AND c.Cmp &gt;= 0 THEN 1
         WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL                THEN 0
@@ -134,7 +139,7 @@ INNER JOIN v_Collection role_col
     ON  role_mem.CollectionID = role_col.CollectionID
     AND role_col.Name LIKE 'rol-dev-%'
 LEFT JOIN v_GS_WORKSTATION_STATUS ws ON ws.ResourceID = cte.MachineID
-WHERE (@RolleFilter = 'Alle' OR REPLACE(role_col.Name, 'rol-dev-', '') = @RolleFilter)
+WHERE cte.rn = 1 AND (@RolleFilter = 'Alle' OR REPLACE(role_col.Name, 'rol-dev-', '') = @RolleFilter)
 GROUP BY role_col.Name, dev.Name0, ws.LastHWScan
 HAVING COUNT(cte.IsInstalled) &gt; 0
 ORDER BY ServerRolle, ComputerName</CommandText>

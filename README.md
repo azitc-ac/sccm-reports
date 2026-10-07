@@ -20,6 +20,20 @@ The built-in ConfigMgr deployment reports trust the client's enforcement state. 
 
 Report languages: German (UI labels). SQL and structure are language-neutral.
 
+## One row per product
+
+A product deployed to a client in two versions - the new one published, the deployment of the
+old one not retired yet - was listed twice and counted twice: once as outdated, once as
+installed, and the compliance figure counted the client''s products one too many. The reports
+keep the **newest deployed version** per client and product (the version sorted numerically,
+four segments; equal keys fall back to the version text, which is what decides between `19c`
+and `18c`). The target version then carries a `+` and a tooltip saying how many older
+deployments of the same product still target this client - the thing to fix is the old
+deployment, not the report.
+
+Applies to the detail report and its badge, and to the two reports that count per client
+(`AppStatus_Overview`, `AppStatus_Compliance-Overview`).
+
 ## Compliance logic
 
 Priority order per application and client:

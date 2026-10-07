@@ -1,6 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition"
-        xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
   <rd:ReportUnitType>Cm</rd:ReportUnitType>
   <rd:ReportServerUrl>http://CMSERVER/ReportServer</rd:ReportServerUrl>
   <AutoRefresh>0</AutoRefresh>
@@ -44,7 +43,12 @@
         <CommandText>WITH AppStatusPerDevice AS (
     SELECT
         ads.MachineID,
-        CASE
+        ROW_NUMBER() OVER (PARTITION BY ads.MachineID,
+            CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0 THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1) ELSE app.DisplayName END
+            ORDER BY RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) AS varchar(6)), 6)
+                   + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) AS varchar(6)), 6)
+                   + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) AS varchar(6)), 6)
+                   + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) AS varchar(6)), 6) DESC, app.SoftwareVersion DESC) AS rn,        CASE
         -- ARP entry with a version: the comparison decides, nothing else
         WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL AND c.Cmp &gt;= 0 THEN 1
         WHEN arp.DisplayName0 IS NOT NULL AND NULLIF(arp.Version0, '') IS NOT NULL                THEN 0
@@ -118,6 +122,7 @@ DeviceSummary AS (
     INNER JOIN v_Collection role_col
         ON  role_mem.CollectionID = role_col.CollectionID
         AND role_col.Name LIKE 'rol-dev-%'
+    WHERE cte.rn = 1
     GROUP BY role_col.Name, cte.MachineID
     HAVING COUNT(cte.IsInstalled) &gt; 0
 )
@@ -173,7 +178,7 @@ ORDER BY ServerRolle</CommandText>
                 <Paragraphs><Paragraph><TextRuns><TextRun>
                   <Value>Anwendungs-Installationsstatus – Compliance-Übersicht</Value>
                   <Style><FontFamily>Segoe UI</FontFamily><FontSize>14pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
-                </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                </TextRun></TextRuns><Style /></Paragraph></Paragraphs>
                 <Style><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border></Style>
               </Textbox>
               <Textbox Name="txtSubtitle">
@@ -182,7 +187,7 @@ ORDER BY ServerRolle</CommandText>
                 <Paragraphs><Paragraph><TextRuns><TextRun>
                   <Value>Compliance pro Serverrolle – Klick auf Rolle öffnet Detailansicht</Value>
                   <Style><FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><Color>#B8D4FF</Color></Style>
-                </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                </TextRun></TextRuns><Style /></Paragraph></Paragraphs>
                 <Style><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border></Style>
               </Textbox>
               <Textbox Name="txtReportDate">
@@ -205,7 +210,7 @@ ORDER BY ServerRolle</CommandText>
             <DataSetName>DashboardData</DataSetName>
             <TablixColumnHierarchy>
               <TablixMembers>
-                <TablixMember/><TablixMember/><TablixMember/><TablixMember/><TablixMember/>
+                <TablixMember /><TablixMember /><TablixMember /><TablixMember /><TablixMember />
               </TablixMembers>
             </TablixColumnHierarchy>
             <TablixRowHierarchy>
@@ -243,7 +248,7 @@ ORDER BY ServerRolle</CommandText>
                       <CanGrow>false</CanGrow><KeepTogether>true</KeepTogether>
                       <Paragraphs><Paragraph><TextRuns><TextRun><Value>Serverrolle</Value>
                         <Style><FontFamily>Segoe UI</FontFamily><FontSize>8.5pt</FontSize><FontWeight>Bold</FontWeight><Color>White</Color></Style>
-                      </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                      </TextRun></TextRuns><Style /></Paragraph></Paragraphs>
                       <Style><BackgroundColor>#005a9e</BackgroundColor><VerticalAlign>Middle</VerticalAlign><Border><Style>None</Style></Border><BottomBorder><Style>Solid</Style><Color>#003f73</Color><Width>1pt</Width></BottomBorder><PaddingLeft>5pt</PaddingLeft><PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom></Style>
                     </Textbox></CellContents></TablixCell>
                     <TablixCell><CellContents><Textbox Name="dhClients">
@@ -284,7 +289,7 @@ ORDER BY ServerRolle</CommandText>
                       <Paragraphs><Paragraph><TextRuns><TextRun>
                         <Value>=Fields!ServerRolle.Value</Value>
                         <Style><FontFamily>Segoe UI</FontFamily><FontSize>9pt</FontSize><FontWeight>Bold</FontWeight><TextDecoration>Underline</TextDecoration><Color>#0078d4</Color></Style>
-                      </TextRun></TextRuns><Style/></Paragraph></Paragraphs>
+                      </TextRun></TextRuns><Style /></Paragraph></Paragraphs>
                       <ActionInfo><Actions><Action>
                         <Drillthrough>
                           <ReportName>/ConfigMgr_P01/Softwareverteilung - Anwendungsüberwachung/Anwendungs-Installationsstatus - Übersicht</ReportName>
@@ -377,7 +382,7 @@ ORDER BY ServerRolle</CommandText>
         <RightMargin>1cm</RightMargin>
         <TopMargin>1cm</TopMargin>
         <BottomMargin>1cm</BottomMargin>
-        <Style/>
+        <Style />
       </Page>
     </ReportSection>
   </ReportSections>
