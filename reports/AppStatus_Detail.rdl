@@ -918,7 +918,7 @@ WHERE s.rn = 1</CommandText>
                               <TextRuns>
                                 <TextRun>
                                   <Value>=Fields!SoftwareVersion.Value &amp; IIF(Fields!AndereVersionen.Value &gt; 0, " +", "")</Value>
-                                  <ToolTip>=IIF(Fields!AndereVersionen.Value &gt; 0, "Diesem Client " &amp; IIF(Fields!AndereVersionen.Value = 1, "ist noch eine Ã¤ltere Version", "sind noch " &amp; Fields!AndereVersionen.Value &amp; " Ã¤ltere Versionen") &amp; " dieses Produkts zugewiesen. Angezeigt wird die neueste; die alte Verteilung sollte zurÃ¼ckgezogen werden.", Nothing)</ToolTip>
+                                  <ToolTip>=IIF(Fields!AndereVersionen.Value &gt; 0, "Diesem Client " &amp; IIF(Fields!AndereVersionen.Value = 1, "ist noch eine ältere Version", "sind noch " &amp; Fields!AndereVersionen.Value &amp; " ältere Versionen") &amp; " dieses Produkts zugewiesen. Angezeigt wird die neueste; die alte Verteilung sollte zurückgezogen werden.", Nothing)</ToolTip>
                                   <Style>
                                     <FontFamily>Segoe UI</FontFamily>
                                     <FontSize>8pt</FontSize>
