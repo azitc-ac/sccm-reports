@@ -54,6 +54,11 @@ INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
     AND aa.CollectionName LIKE 'ins-req-dev-%'
+    -- and the client still is a member of the collection it is deployed to:
+    -- the asset row survives the membership change, the deployment does not
+    -- cover the client any more
+    AND EXISTS (SELECT 1 FROM v_FullCollectionMembership fcm
+                WHERE fcm.ResourceID = ads.MachineID AND fcm.CollectionID = aa.CollectionID)
 INNER JOIN v_Applications app ON app.ModelId = aa.AppModelID
 OUTER APPLY (
     -- The ARP entry of the deployed product: the shortest display name that

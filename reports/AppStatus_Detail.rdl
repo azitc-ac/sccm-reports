@@ -90,6 +90,7 @@ SELECT
     arp.Version0                                              AS ARP_Version,
     ws.LastHWScan                                             AS LetzteInventory,
     DATEDIFF(day, ws.LastHWScan, GETDATE())                   AS InventoryAlterTage,
+    CASE WHEN ads.EnforcementState IS NULL THEN 1 ELSE 0 END AS OhneStatus,
     RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) AS varchar(6)), 6)
       + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) AS varchar(6)), 6)
       + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) AS varchar(6)), 6)
@@ -99,6 +100,11 @@ INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
     AND aa.CollectionName LIKE 'ins-req-dev-%'
+    -- and the client still is a member of the collection it is deployed to:
+    -- the asset row survives the membership change, the deployment does not
+    -- cover the client any more
+    AND EXISTS (SELECT 1 FROM v_FullCollectionMembership fcm
+                WHERE fcm.ResourceID = ads.MachineID AND fcm.CollectionID = aa.CollectionID)
 INNER JOIN v_Applications app ON app.ModelId = aa.AppModelID
 OUTER APPLY (
     -- The ARP entry of the deployed product: the shortest display name that
@@ -155,8 +161,9 @@ SELECT MachineName, AppName, Publisher, SoftwareVersion, StatusText, InstallDatu
        ARP_Version, LetzteInventory, InventoryAlterTage, AndereVersionen
 FROM (
     SELECT d.*,
-           ROW_NUMBER() OVER (PARTITION BY d.AppName ORDER BY d.SollSort DESC, d.SoftwareVersion DESC) AS rn,
-           COUNT(*)     OVER (PARTITION BY d.AppName) - 1                      AS AndereVersionen
+           ROW_NUMBER() OVER (PARTITION BY d.AppName ORDER BY d.OhneStatus ASC, d.SollSort DESC, d.SoftwareVersion DESC) AS rn,
+           DENSE_RANK() OVER (PARTITION BY d.AppName ORDER BY d.SollSort)
+         + DENSE_RANK() OVER (PARTITION BY d.AppName ORDER BY d.SollSort DESC) - 2 AS AndereVersionen
     FROM Deployed d
 ) x
 WHERE x.rn = 1
@@ -220,7 +227,7 @@ ORDER BY AppName</CommandText>
     COUNT(s.IsInstalled)          AS Apps_Gesamt,
     ISNULL(SUM(s.IsInstalled), 0) AS Apps_Installiert
 FROM (
-    SELECT ROW_NUMBER() OVER (PARTITION BY CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0 THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1) ELSE app.DisplayName END ORDER BY    RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) AS varchar(6)), 6)
+    SELECT ROW_NUMBER() OVER (PARTITION BY CASE WHEN CHARINDEX(' - ', app.DisplayName) &gt; 0 THEN LEFT(app.DisplayName, CHARINDEX(' - ', app.DisplayName) - 1) ELSE app.DisplayName END ORDER BY CASE WHEN ads.EnforcementState IS NULL THEN 1 ELSE 0 END ASC,    RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 4) AS INT), 0) AS varchar(6)), 6)
       + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 3) AS INT), 0) AS varchar(6)), 6)
       + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 2) AS INT), 0) AS varchar(6)), 6)
       + RIGHT('000000' + CAST(ISNULL(TRY_CAST(PARSENAME(v.Soll, 1) AS INT), 0) AS varchar(6)), 6) DESC, app.SoftwareVersion DESC) AS rn,
@@ -242,6 +249,11 @@ INNER JOIN v_ApplicationAssignment aa
     ON  aa.AssignmentID   = ads.AssignmentID
     AND aa.OfferTypeID    = 0
     AND aa.CollectionName LIKE 'ins-req-dev-%'
+    -- and the client still is a member of the collection it is deployed to:
+    -- the asset row survives the membership change, the deployment does not
+    -- cover the client any more
+    AND EXISTS (SELECT 1 FROM v_FullCollectionMembership fcm
+                WHERE fcm.ResourceID = ads.MachineID AND fcm.CollectionID = aa.CollectionID)
 INNER JOIN v_Applications app ON app.ModelId = aa.AppModelID
     OUTER APPLY (
     -- The ARP entry of the deployed product: the shortest display name that

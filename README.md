@@ -20,6 +20,23 @@ The built-in ConfigMgr deployment reports trust the client's enforcement state. 
 
 Report languages: German (UI labels). SQL and structure are language-neutral.
 
+## What counts as deployed
+
+`fn_rbac_AppDeploymentAssetDetails` keeps a client''s asset row after the client has left the
+collection the deployment targets - the deployment itself is untouched, so the row passes every
+join and the report shows a version nobody deploys to that client any more. Every report that
+reads deployments therefore asks for the membership as it is now:
+
+```sql
+AND EXISTS (SELECT 1 FROM v_FullCollectionMembership fcm
+            WHERE fcm.ResourceID = ads.MachineID AND fcm.CollectionID = aa.CollectionID)
+```
+
+The same function also returns **one row per deployment type**, not per deployment: an
+application with a second deployment type beside the tool''s own was listed twice from a single
+deployment, once with a state and once without. Of the rows of one product the report keeps the
+one that reports a state, then the newest version.
+
 ## One row per product
 
 A product deployed to a client in two versions - the new one published, the deployment of the
